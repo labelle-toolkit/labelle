@@ -20,17 +20,10 @@ jobs:
         with:
           version: '0.15.2'
 
-      - name: Install kcov and raylib dependencies
+      - name: Install raylib dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            binutils-dev \
-            libcurl4-openssl-dev \
-            zlib1g-dev \
-            libdw-dev \
-            libiberty-dev \
-            cmake \
-            ninja-build \
             libgl1-mesa-dev \
             libx11-dev \
             libxcursor-dev \
@@ -43,35 +36,18 @@ jobs:
             libwayland-dev \
             libxkbcommon-dev
 
-      - name: Build and install kcov
+      - name: Run tests
         run: |
-          git clone https://github.com/SimonKagstrom/kcov.git
-          cd kcov
-          mkdir build && cd build
-          cmake -G Ninja ..
-          ninja
-          sudo ninja install
-
-      - name: Run tests with coverage
-        run: |
-          # Use zig build coverage which wraps tests in kcov via setExecCmd
-          zig build coverage
-
-      - name: Extract coverage percentage
-        id: coverage
-        run: |
-          # Find the coverage.json file
-          COVERAGE_JSON=$(find coverage -name "coverage.json" -type f | head -1)
-
-          if [ -n "$COVERAGE_JSON" ]; then
-            echo "Found: $COVERAGE_JSON"
-            COVERAGE=$(cat "$COVERAGE_JSON" | jq -r '.percent_covered' | cut -d'.' -f1)
-            echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
-            echo "Coverage: $COVERAGE%"
-          else
-            echo "No coverage.json found"
-            echo "percentage=0" >> $GITHUB_OUTPUT
-          fi
+          # Note: Code coverage for Zig projects with C dependencies is not
+          # reliably available via kcov. kcov can only instrument C code and
+          # Zig dependencies in .zig-cache, not the project's own source files.
+          #
+          # For accurate coverage, we would need Zig's built-in coverage or
+          # llvm-cov with proper configuration.
+          #
+          # For now, we run tests to verify they pass.
+          echo "Running tests..."
+          zig build test --summary all
 
       - name: Create coverage badge
         if: github.ref == 'refs/heads/main'
@@ -81,21 +57,5 @@ jobs:
           gistID: ${{ vars.COVERAGE_GIST_ID }}
           filename: coverage.json
           label: coverage
-          message: ${{ steps.coverage.outputs.percentage }}%
-          valColorRange: ${{ steps.coverage.outputs.percentage }}
-          maxColorRange: 100
-          minColorRange: 0
-
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: coverage/
-
-      - name: Deploy to GitHub Pages
-        if: github.ref == 'refs/heads/main'
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./coverage
-          destination_dir: coverage
+          message: N/A
+          color: lightgrey

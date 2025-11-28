@@ -110,14 +110,4 @@ pub fn build(b: *std.Build) void {
     const run_lib_tests = b.addRunArtifact(lib_tests);
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&run_lib_tests.step);
-
-    // Coverage step - wraps tests in kcov
-    const coverage_run = b.addSystemCommand(&.{
-        "kcov",
-        "--include-pattern=/src/",
-        "coverage",
-    });
-    coverage_run.addArtifactArg(lib_tests);
-    const coverage_step = b.step("coverage", "Run tests with kcov coverage");
-    coverage_step.dependOn(&coverage_run.step);
 }
