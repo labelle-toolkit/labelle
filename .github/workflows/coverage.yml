@@ -102,8 +102,27 @@ jobs:
       - name: Extract coverage percentage
         id: coverage
         run: |
-          # Parse coverage from kcov JSON output
-          COVERAGE=$(cat coverage/test/coverage.json | jq -r '.percent_covered' | cut -d'.' -f1)
+          # Debug: show coverage directory structure
+          echo "Coverage directory contents:"
+          ls -la coverage/
+          echo ""
+
+          # Find the coverage.json file (kcov puts it in a subfolder named after the binary)
+          COVERAGE_JSON=$(find coverage -name "coverage.json" -type f | head -1)
+
+          if [ -n "$COVERAGE_JSON" ]; then
+            echo "Found coverage file: $COVERAGE_JSON"
+            echo "Contents:"
+            cat "$COVERAGE_JSON"
+            echo ""
+
+            # Parse coverage from kcov JSON output
+            COVERAGE=$(cat "$COVERAGE_JSON" | jq -r '.percent_covered' | cut -d'.' -f1)
+          else
+            echo "No coverage.json found, using 0"
+            COVERAGE="0"
+          fi
+
           echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
           echo "Coverage: $COVERAGE%"
 
@@ -131,7 +150,7 @@ jobs:
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./coverage/test
+          publish_dir: ./coverage
           destination_dir: coverage
 
       - name: Upload to Codecov
