@@ -11,21 +11,21 @@ const std = @import("std");
 const rl = @import("raylib");
 const gfx = @import("raylib-ecs-gfx");
 
-// Define custom animation types for this example
-const PlayerAnim = enum {
+// Define animation types for this example
+const AnimType = enum {
     idle,
     walk,
     run,
     jump,
 
-    pub fn toSpriteName(self: PlayerAnim) []const u8 {
+    pub fn toSpriteName(self: AnimType) []const u8 {
         return @tagName(self);
     }
 };
 
-// Create typed animation player and animation component
-const PlayerAnimPlayer = gfx.AnimationPlayer(PlayerAnim);
-const PlayerAnimation = gfx.Animation(PlayerAnim);
+// Create typed animation player and component
+const AnimPlayer = gfx.AnimationPlayer(AnimType);
+const Animation = gfx.Animation(AnimType);
 
 pub fn main() !void {
     // CI test mode - hidden window, auto-screenshot and exit
@@ -44,8 +44,8 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // Create animation player with custom types
-    var anim_player = PlayerAnimPlayer.init(allocator);
+    // Create animation player
+    var anim_player = AnimPlayer.init(allocator);
     defer anim_player.deinit();
 
     // Register animation types with their frame counts
@@ -58,7 +58,7 @@ pub fn main() !void {
     var animation = anim_player.createAnimation(.idle);
     animation.frame_duration = 0.15; // 150ms per frame
 
-    var current_type: PlayerAnim = .idle;
+    var current_type: AnimType = .idle;
     var sprite_buffer: [256]u8 = undefined;
     var frame_count: u32 = 0;
 

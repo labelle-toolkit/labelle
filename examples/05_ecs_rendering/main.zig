@@ -24,18 +24,18 @@ const Velocity = struct {
     dy: f32 = 0,
 };
 
-// Define custom animation types for this example
-const CharacterAnim = enum {
+// Define animation types for this example
+const AnimType = enum {
     idle,
     walk,
 
-    pub fn toSpriteName(self: CharacterAnim) []const u8 {
+    pub fn toSpriteName(self: AnimType) []const u8 {
         return @tagName(self);
     }
 };
 
 // Create typed animation component
-const CharacterAnimation = gfx.Animation(CharacterAnim);
+const Animation = gfx.Animation(AnimType);
 
 pub fn main() !void {
     // CI test mode - hidden window, auto-screenshot and exit
@@ -103,7 +103,7 @@ pub fn main() !void {
         .sprite_name = "player",
         .tint = rl.Color.sky_blue,
     });
-    registry.add(player, CharacterAnimation{
+    registry.add(player, Animation{
         .frame = 0,
         .total_frames = 4,
         .frame_duration = 0.2,
@@ -121,7 +121,7 @@ pub fn main() !void {
         .sprite_name = "enemy",
         .tint = rl.Color.red,
     });
-    registry.add(enemy1, CharacterAnimation{
+    registry.add(enemy1, Animation{
         .frame = 0,
         .total_frames = 6,
         .frame_duration = 0.15,
@@ -166,7 +166,7 @@ pub fn main() !void {
         }
 
         // Update player animation based on movement
-        var player_anim = registry.get(CharacterAnimation, player);
+        var player_anim = registry.get(Animation, player);
         if (player_vel.dx != 0) {
             if (player_anim.anim_type != .walk) {
                 player_anim.setAnimation(.walk, 6);
@@ -197,7 +197,7 @@ pub fn main() !void {
 
         // Update animations (simplified - just update known entities)
         player_anim.update(dt);
-        var enemy_anim = registry.get(CharacterAnimation, enemy1);
+        var enemy_anim = registry.get(Animation, enemy1);
         enemy_anim.update(dt);
 
         // Rendering
@@ -231,7 +231,7 @@ pub fn main() !void {
             );
 
             // Show animation frame if entity has Animation
-            if (registry.tryGet(CharacterAnimation, entity)) |anim| {
+            if (registry.tryGet(Animation, entity)) |anim| {
                 var frame_buf: [8]u8 = undefined;
                 const frame_str = std.fmt.bufPrintZ(&frame_buf, "{d}", .{anim.frame + 1}) catch "?";
                 rl.drawText(
