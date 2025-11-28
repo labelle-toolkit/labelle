@@ -1,8 +1,10 @@
-# raylib-ecs-gfx
+# labelle
 
-[![CI](https://github.com/Flying-Platform/raylib-ecs-gfx/actions/workflows/ci.yml/badge.svg)](https://github.com/Flying-Platform/raylib-ecs-gfx/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/apotema/0069615a643f5e3d215d25c5c6de10be/raw/test-badge.json)](https://github.com/Flying-Platform/raylib-ecs-gfx/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/apotema/a2afdfd6e7c0f4765cffca1db4219d1e/raw/coverage.json)](https://github.com/Flying-Platform/raylib-ecs-gfx/actions/workflows/coverage.yml)
+![labelle banner](banner.png)
+
+[![CI](https://github.com/Flying-Platform/labelle/actions/workflows/ci.yml/badge.svg)](https://github.com/Flying-Platform/labelle/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/apotema/0069615a643f5e3d215d25c5c6de10be/raw/test-badge.json)](https://github.com/Flying-Platform/labelle/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/apotema/a2afdfd6e7c0f4765cffca1db4219d1e/raw/coverage.json)](https://github.com/Flying-Platform/labelle/actions/workflows/coverage.yml)
 [![Zig](https://img.shields.io/badge/zig-0.15.2-orange)](https://ziglang.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -26,8 +28,8 @@ In your `build.zig.zon`:
 
 ```zig
 .dependencies = .{
-    .@"raylib-ecs-gfx" = .{
-        .url = "https://github.com/Flying-Platform/raylib-ecs-gfx/archive/main.tar.gz",
+    .labelle = .{
+        .url = "https://github.com/Flying-Platform/labelle/archive/main.tar.gz",
         .hash = "...",
     },
 },
@@ -36,17 +38,17 @@ In your `build.zig.zon`:
 In your `build.zig`:
 
 ```zig
-const gfx_dep = b.dependency("raylib-ecs-gfx", .{
+const gfx_dep = b.dependency("labelle", .{
     .target = target,
     .optimize = optimize,
 });
-exe.root_module.addImport("raylib-ecs-gfx", gfx_dep.module("raylib-ecs-gfx"));
+exe.root_module.addImport("labelle", gfx_dep.module("labelle"));
 ```
 
 ### Basic Usage
 
 ```zig
-const gfx = @import("raylib-ecs-gfx");
+const gfx = @import("labelle");
 const rl = gfx.rl;
 const ecs = gfx.ecs;
 
@@ -154,7 +156,7 @@ gfx.effects.Flash
 ## Directory Structure
 
 ```
-raylib-ecs-gfx/
+labelle/
 ├── src/
 │   ├── lib.zig                 # Main exports
 │   ├── components/             # ECS components
