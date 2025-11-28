@@ -39,30 +39,35 @@ jobs:
         run: zig build
 
       - name: Run zspec tests
+        shell: bash
         run: |
           echo "::group::🧪 Running zspec tests"
-          # Run tests with color output preserved
-          TERM=xterm-256color zig build test 2>&1 | tee test_output.txt
+          # Run tests and capture output
+          set +e
+          zig build test 2>&1 | tee test_output.txt
           TEST_EXIT_CODE=${PIPESTATUS[0]}
+          set -e
           echo "::endgroup::"
 
           # Parse test results for summary
-          PASSED=$(grep -oP '\d+(?= of \d+ tests passed)' test_output.txt || echo "0")
-          TOTAL=$(grep -oP '(?<=of )\d+(?= tests passed)' test_output.txt || echo "0")
+          PASSED=$(grep -oE '[0-9]+ of [0-9]+ tests passed' test_output.txt | grep -oE '^[0-9]+' || echo "0")
+          TOTAL=$(grep -oE '[0-9]+ of [0-9]+ tests passed' test_output.txt | grep -oE '[0-9]+$' || echo "0")
 
           # Create a summary in the GitHub Actions UI
           echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "$TEST_EXIT_CODE" -eq 0 ]; then
-            echo "✅ **All $PASSED tests passed!**" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **All $PASSED of $TOTAL tests passed!**" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ **Tests failed**" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Test Output" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "<details><summary>Test Output</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
           cat test_output.txt >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
 
           exit $TEST_EXIT_CODE
 
