@@ -56,21 +56,27 @@ jobs:
         run: |
           mkdir -p coverage
 
-          # Build the test binary (don't run it yet)
+          # Build the test binary
           zig build test --summary all 2>&1 || true
 
-          # Find ELF executables that are likely the test binary (not the build script)
-          # The test binary will be larger than the build script
-          TEST_BIN=""
-          for bin in $(find .zig-cache/o -type f -executable 2>/dev/null); do
+          # List all executables to debug
+          echo "Looking for test executables..."
+          find .zig-cache/o -type f -executable 2>/dev/null | while read bin; do
             if file "$bin" | grep -q "ELF.*executable"; then
-              SIZE=$(stat -c%s "$bin" 2>/dev/null || stat -f%z "$bin" 2>/dev/null || echo "0")
-              # Test binary should be larger than 100KB
-              if [ "$SIZE" -gt 100000 ]; then
-                TEST_BIN="$bin"
-                echo "Found candidate test binary: $bin (size: $SIZE)"
-                break
-              fi
+              SIZE=$(stat -c%s "$bin" 2>/dev/null || echo "0")
+              NAME=$(basename "$bin")
+              echo "  $NAME (size: $SIZE) - $bin"
+            fi
+          done
+
+          # Find the test binary - it's named "test" and is an ELF executable (not the build script)
+          # Skip files named "build" which is the zig build system
+          TEST_BIN=""
+          for bin in $(find .zig-cache/o -type f -executable -name "test" 2>/dev/null); do
+            if file "$bin" | grep -q "ELF.*executable"; then
+              TEST_BIN="$bin"
+              echo "Found test binary: $bin"
+              break
             fi
           done
 
@@ -84,6 +90,8 @@ jobs:
             }
           else
             echo "Warning: Could not find test binary for coverage"
+            echo "All executables found:"
+            find .zig-cache/o -type f -executable 2>/dev/null | head -20
             echo "Running tests without coverage..."
             zig build test
             # Create a placeholder coverage file
