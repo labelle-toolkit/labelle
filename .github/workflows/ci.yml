@@ -38,8 +38,49 @@ jobs:
       - name: Build library
         run: zig build
 
-      - name: Run tests
-        run: zig build test
+      - name: Run zspec tests
+        id: tests
+        shell: bash
+        run: |
+          echo "::group::🧪 Running zspec tests"
+          # Run tests and capture output
+          set +e
+          zig build test 2>&1 | tee test_output.txt
+          TEST_EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+          echo "::endgroup::"
+
+          # Parse test results for summary
+          PASSED=$(grep -oE '[0-9]+ of [0-9]+ tests passed' test_output.txt | grep -oE '^[0-9]+' || echo "0")
+          TOTAL=$(grep -oE '[0-9]+ of [0-9]+ tests passed' test_output.txt | grep -oE '[0-9]+$' || echo "0")
+
+          # Export for badge
+          echo "passed=$PASSED" >> $GITHUB_OUTPUT
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+          if [ "$TEST_EXIT_CODE" -eq 0 ]; then
+            echo "status=passing" >> $GITHUB_OUTPUT
+          else
+            echo "status=failing" >> $GITHUB_OUTPUT
+          fi
+
+          # Create a summary in the GitHub Actions UI
+          echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ "$TEST_EXIT_CODE" -eq 0 ]; then
+            echo "✅ **All $PASSED of $TOTAL tests passed!**" >> $GITHUB_STEP_SUMMARY
+          else
+            FAILED_COUNT=$((TOTAL - PASSED))
+            echo "❌ **Tests failed: $PASSED/$TOTAL passed ($FAILED_COUNT failed)**" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "<details><summary>Test Output</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat test_output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
+
+          exit $TEST_EXIT_CODE
 
       - name: Run examples and capture screenshots
         run: |
@@ -120,6 +161,31 @@ jobs:
           fi
 
           echo "All screenshots generated successfully!"
+
+      - name: Create test badge JSON
+        if: github.ref == 'refs/heads/main'
+        run: |
+          PASSED=${{ steps.tests.outputs.passed }}
+          TOTAL=${{ steps.tests.outputs.total }}
+          STATUS=${{ steps.tests.outputs.status }}
+
+          if [ "$STATUS" = "passing" ]; then
+            COLOR="brightgreen"
+          else
+            COLOR="red"
+          fi
+
+          echo "{\"schemaVersion\":1,\"label\":\"tests\",\"message\":\"${PASSED}/${TOTAL} passed\",\"color\":\"${COLOR}\"}" > test-badge.json
+          cat test-badge.json
+
+      - name: Update test badge gist
+        if: github.ref == 'refs/heads/main'
+        uses: exuanbo/actions-deploy-gist@v1
+        with:
+          token: ${{ secrets.GIST_TOKEN }}
+          gist_id: ${{ vars.TEST_BADGE_GIST_ID }}
+          file_path: test-badge.json
+          file_type: text
 
       - name: Upload screenshots as artifacts
         uses: actions/upload-artifact@v4
