@@ -9,7 +9,7 @@
 
 const std = @import("std");
 const rl = @import("raylib");
-const gfx = @import("raylib-ecs-gfx");
+const gfx = @import("labelle");
 
 // Define animation types for this example with config
 const AnimType = enum {

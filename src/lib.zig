@@ -1,4 +1,4 @@
-//! raylib-ecs-gfx - 2D Graphics Library for Zig Games
+//! labelle - 2D Graphics Library for Zig Games
 //!
 //! A graphics library combining raylib rendering with zig-ecs entity component system.
 //! Provides sprite rendering, animation, texture atlas management, and ECS render systems.
@@ -15,7 +15,7 @@
 //!
 //! ## Quick Start with Engine API
 //! ```zig
-//! const gfx = @import("raylib-ecs-gfx");
+//! const gfx = @import("labelle");
 //!
 //! // Define animations with config
 //! const Animations = struct {

@@ -1,10 +1,10 @@
 //! High-level Engine API
 //!
-//! Provides a simplified interface for initializing and rendering with raylib-ecs-gfx.
+//! Provides a simplified interface for initializing and rendering with labelle.
 //!
 //! Example usage:
 //! ```zig
-//! const gfx = @import("raylib-ecs-gfx");
+//! const gfx = @import("labelle");
 //!
 //! const Animations = struct {
 //!     const Player = enum {
@@ -156,16 +156,16 @@ pub const Engine = struct {
     /// Internal: Render all entities sorted by z_index
     fn renderEntities(self: *Engine, dt: f32) void {
         // Collect all renderable items
-        var items = std.ArrayList(RenderItem).init(self.allocator);
-        defer items.deinit();
+        var items: std.ArrayList(RenderItem) = .empty;
+        defer items.deinit(self.allocator);
 
         // Collect static sprites
         var sprite_view = self.registry.view(.{ Position, Sprite }, .{});
-        var sprite_iter = sprite_view.iterator();
+        var sprite_iter = @TypeOf(sprite_view).Iterator.init(&sprite_view);
         while (sprite_iter.next()) |entity| {
             const pos = sprite_view.getConst(Position, entity);
             const sprite = sprite_view.getConst(Sprite, entity);
-            items.append(.{
+            items.append(self.allocator, .{
                 .x = pos.x,
                 .y = pos.y,
                 .z_index = sprite.z_index,
@@ -253,7 +253,7 @@ pub const Engine = struct {
         const AnimComp = components.Animation(AnimationType);
 
         var view = self.registry.view(.{ Position, AnimComp }, .{});
-        var iter = view.iterator();
+        var iter = @TypeOf(view).Iterator.init(&view);
 
         while (iter.next()) |entity| {
             var anim = view.get(AnimComp, entity);

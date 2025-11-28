@@ -1,4 +1,4 @@
-// raylib-ecs-gfx library tests
+// labelle library tests
 // Run with: zig build test
 
 const zspec = @import("zspec");

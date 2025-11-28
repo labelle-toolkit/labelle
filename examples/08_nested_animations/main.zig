@@ -1,27 +1,19 @@
-//! Example 08: Nested Animation Paths
+//! Example 08: Nested Animation Paths with Engine API
 //!
-//! This example demonstrates using nested animation paths in sprite sheets.
-//! When your sprite sheet has animations organized in subdirectories like:
+//! This example demonstrates using nested animation paths in sprite sheets
+//! with the Engine API. When your sprite sheet has animations organized in
+//! subdirectories like:
 //!   - wizard/drink_0001, wizard/drink_0002, ..., wizard/drink_0011
 //!   - thief/attack_0001, thief/attack_0002, ..., thief/attack_0008
-//!
-//! You can define your animation enum's toSpriteName() to return the full path.
 //!
 //! Run with: zig build run-example-08
 
 const std = @import("std");
 const rl = @import("raylib");
 const ecs = @import("ecs");
-const gfx = @import("raylib-ecs-gfx");
-
-const Position = struct {
-    x: f32 = 0,
-    y: f32 = 0,
-};
+const gfx = @import("labelle");
 
 // Define animation types with NESTED PATHS and config
-// The sprite names are generated from enum name: wizard_drink -> "wizard_drink_0001"
-// For nested paths like "wizard/drink_0001", use a custom getSpriteName approach
 const PartyAnim = enum {
     wizard_drink,
     wizard_cast,
@@ -67,7 +59,7 @@ pub fn main() !void {
     }
 
     // Initialize raylib
-    rl.initWindow(800, 600, "Example 08: Nested Animation Paths");
+    rl.initWindow(800, 600, "Example 08: Nested Animations with Engine");
     defer rl.closeWindow();
     rl.setTargetFPS(60);
 
@@ -80,51 +72,40 @@ pub fn main() !void {
     var registry = ecs.Registry.init(allocator);
     defer registry.deinit();
 
-    // Initialize renderer
-    var renderer = gfx.Renderer.init(allocator);
-    defer renderer.deinit();
-
-    // Load the party sprite atlas with nested animation paths
-    renderer.loadAtlas(
-        "party",
-        "fixtures/output/party.json",
-        "fixtures/output/party.png",
-    ) catch |err| {
-        std.debug.print("Failed to load party atlas: {}\n", .{err});
-        std.debug.print("Make sure you run this from the raylib-ecs-gfx directory\n", .{});
+    // Initialize Engine with party atlas
+    var engine = gfx.Engine.init(allocator, &registry, .{
+        .atlases = &.{
+            .{ .name = "party", .json = "fixtures/output/party.json", .texture = "fixtures/output/party.png" },
+        },
+    }) catch |err| {
+        std.debug.print("Failed to initialize engine: {}\n", .{err});
+        std.debug.print("Make sure you run this from the labelle directory\n", .{});
         return;
     };
+    defer engine.deinit();
 
     std.debug.print("Loaded party atlas with {} sprites\n", .{
-        renderer.getTextureManager().totalSpriteCount(),
+        engine.getRenderer().getTextureManager().totalSpriteCount(),
     });
 
-    // Create wizard entity (no AnimPlayer needed - config comes from enum)
+    // Create wizard entity using gfx.Position
     const wizard = registry.create();
-    registry.add(wizard, Position{ .x = 250, .y = 300 });
-    registry.add(wizard, gfx.Render{
-        .z_index = gfx.ZIndex.characters,
-        .sprite_name = "wizard/drink_0001",
-        .scale = 4.0,
-    });
-    var wizard_anim_comp = Animation.init(.wizard_drink);
-    wizard_anim_comp.scale = 4.0;
-    registry.add(wizard, wizard_anim_comp);
+    registry.add(wizard, gfx.Position{ .x = 250, .y = 300 });
+    var wizard_anim = Animation.init(.wizard_drink);
+    wizard_anim.z_index = gfx.ZIndex.characters;
+    wizard_anim.scale = 4.0;
+    registry.add(wizard, wizard_anim);
 
-    // Create thief entity
+    // Create thief entity using gfx.Position
     const thief = registry.create();
-    registry.add(thief, Position{ .x = 550, .y = 300 });
-    registry.add(thief, gfx.Render{
-        .z_index = gfx.ZIndex.characters,
-        .sprite_name = "thief/attack_0001",
-        .scale = 4.0,
-    });
-    var thief_anim_comp = Animation.init(.thief_attack);
-    thief_anim_comp.scale = 4.0;
-    registry.add(thief, thief_anim_comp);
+    registry.add(thief, gfx.Position{ .x = 550, .y = 300 });
+    var thief_anim = Animation.init(.thief_attack);
+    thief_anim.z_index = gfx.ZIndex.characters;
+    thief_anim.scale = 4.0;
+    registry.add(thief, thief_anim);
 
-    var wizard_anim: PartyAnim = .wizard_drink;
-    var thief_anim: PartyAnim = .thief_attack;
+    var wizard_anim_type: PartyAnim = .wizard_drink;
+    var thief_anim_type: PartyAnim = .thief_attack;
     var frame_count: u32 = 0;
 
     // Main loop
@@ -138,41 +119,24 @@ pub fn main() !void {
 
         // Keyboard input to switch animations
         if (rl.isKeyPressed(rl.KeyboardKey.one)) {
-            wizard_anim = .wizard_drink;
+            wizard_anim_type = .wizard_drink;
             var anim = registry.get(Animation, wizard);
-            anim.play(wizard_anim);
+            anim.play(wizard_anim_type);
         }
         if (rl.isKeyPressed(rl.KeyboardKey.two)) {
-            wizard_anim = .wizard_cast;
+            wizard_anim_type = .wizard_cast;
             var anim = registry.get(Animation, wizard);
-            anim.play(wizard_anim);
+            anim.play(wizard_anim_type);
         }
         if (rl.isKeyPressed(rl.KeyboardKey.three)) {
-            thief_anim = .thief_attack;
+            thief_anim_type = .thief_attack;
             var anim = registry.get(Animation, thief);
-            anim.play(thief_anim);
+            anim.play(thief_anim_type);
         }
         if (rl.isKeyPressed(rl.KeyboardKey.four)) {
-            thief_anim = .thief_sneak;
+            thief_anim_type = .thief_sneak;
             var anim = registry.get(Animation, thief);
-            anim.play(thief_anim);
-        }
-
-        // Update animations and sprite names for both characters
-        inline for (.{ wizard, thief }) |entity| {
-            var anim = registry.get(Animation, entity);
-            var render = registry.get(gfx.Render, entity);
-
-            anim.update(dt);
-
-            // Generate sprite name using nested path
-            // This produces names like "wizard/drink_0001", "thief/attack_0003"
-            var sprite_buf: [64]u8 = undefined;
-            const sprite_name = std.fmt.bufPrint(&sprite_buf, "{s}_{d:0>4}", .{
-                anim.anim_type.toSpritePath(),
-                anim.frame + 1,
-            }) catch "wizard/drink_0001";
-            render.sprite_name = sprite_name;
+            anim.play(thief_anim_type);
         }
 
         // Rendering
@@ -181,29 +145,38 @@ pub fn main() !void {
 
         rl.clearBackground(rl.Color{ .r = 30, .g = 35, .b = 45, .a = 255 });
 
-        // Draw all entities
-        {
-            var view = registry.view(.{ Position, gfx.Render }, .{});
-            var iter = @TypeOf(view).Iterator.init(&view);
-            while (iter.next()) |entity| {
-                const pos = view.getConst(Position, entity);
-                const ren = view.getConst(gfx.Render, entity);
+        // Engine handles static sprites, effects, and camera
+        engine.render(dt);
 
-                renderer.drawSprite(
-                    ren.sprite_name,
-                    pos.x,
-                    pos.y,
-                    .{
-                        .scale = ren.scale,
-                        .flip_x = ren.flip_x,
-                        .tint = ren.tint,
-                    },
-                );
-            }
+        // For nested paths, we need custom rendering since sprite names are custom
+        // Update and draw animations manually for nested paths
+        inline for (.{ wizard, thief }) |entity| {
+            var anim = registry.get(Animation, entity);
+            const pos = registry.getConst(gfx.Position, entity);
+
+            anim.update(dt);
+
+            // Generate sprite name using nested path
+            var sprite_buf: [64]u8 = undefined;
+            const sprite_name = std.fmt.bufPrint(&sprite_buf, "{s}_{d:0>4}", .{
+                anim.anim_type.toSpritePath(),
+                anim.frame + 1,
+            }) catch "wizard/drink_0001";
+
+            engine.getRenderer().drawSprite(
+                sprite_name,
+                pos.x,
+                pos.y,
+                .{
+                    .scale = anim.scale,
+                    .flip_x = anim.flip_x,
+                    .tint = anim.tint,
+                },
+            );
         }
 
         // UI - Title
-        rl.drawText("Nested Animation Paths Example", 10, 10, 24, rl.Color.white);
+        rl.drawText("Nested Animations with Engine API", 10, 10, 24, rl.Color.white);
         rl.drawText("Sprite paths like 'wizard/drink_0001', 'thief/attack_0003'", 10, 40, 16, rl.Color.light_gray);
 
         // Instructions
@@ -224,7 +197,7 @@ pub fn main() !void {
         var wizard_buf: [64:0]u8 = undefined;
         const wizard_cfg = wizard_a.getConfig();
         _ = std.fmt.bufPrintZ(&wizard_buf, "{s}: {d}/{d}", .{
-            wizard_anim.displayName(),
+            wizard_anim_type.displayName(),
             wizard_a.frame + 1,
             wizard_cfg.frames,
         }) catch "?";
@@ -233,7 +206,7 @@ pub fn main() !void {
         var thief_buf: [64:0]u8 = undefined;
         const thief_cfg = thief_a.getConfig();
         _ = std.fmt.bufPrintZ(&thief_buf, "{s}: {d}/{d}", .{
-            thief_anim.displayName(),
+            thief_anim_type.displayName(),
             thief_a.frame + 1,
             thief_cfg.frames,
         }) catch "?";
@@ -241,7 +214,7 @@ pub fn main() !void {
 
         // Code example
         rl.drawText("Code:", 10, 480, 16, rl.Color.yellow);
-        rl.drawText("pub fn toSpriteName(self) []const u8 {", 10, 500, 12, rl.Color.light_gray);
+        rl.drawText("pub fn toSpritePath(self) []const u8 {", 10, 500, 12, rl.Color.light_gray);
         rl.drawText("    .wizard_drink => \"wizard/drink\",", 10, 515, 12, rl.Color.light_gray);
         rl.drawText("    .thief_attack => \"thief/attack\",", 10, 530, 12, rl.Color.light_gray);
         rl.drawText("}", 10, 545, 12, rl.Color.light_gray);

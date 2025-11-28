@@ -24,24 +24,25 @@ pub fn spriteRenderSystem(
     var view = registry.view(.{ PositionType, Render }, .{});
 
     // Collect entities for sorting
-    var entities = std.ArrayList(struct {
+    const EntitySort = struct {
         entity: ecs.Registry.Entity,
         z_index: u8,
-    }).init(renderer.allocator);
-    defer entities.deinit();
+    };
+    var entities: std.ArrayList(EntitySort) = .empty;
+    defer entities.deinit(renderer.allocator);
 
     var iter = @TypeOf(view).Iterator.init(&view);
     while (iter.next()) |entity| {
         const render = view.getConst(Render, entity);
-        entities.append(.{
+        entities.append(renderer.allocator, .{
             .entity = entity,
             .z_index = render.z_index,
         }) catch continue;
     }
 
     // Sort by z_index
-    std.mem.sort(@TypeOf(entities.items[0]), entities.items, {}, struct {
-        fn lessThan(_: void, a: anytype, b: anytype) bool {
+    std.mem.sort(EntitySort, entities.items, {}, struct {
+        fn lessThan(_: void, a: EntitySort, b: EntitySort) bool {
             return a.z_index < b.z_index;
         }
     }.lessThan);
@@ -76,7 +77,7 @@ pub fn animationUpdateSystem(
     dt: f32,
 ) void {
     var view = registry.view(.{AnimationType}, .{});
-    var iter = view.iterator();
+    var iter = @TypeOf(view).Iterator.init(&view);
 
     while (iter.next()) |entity| {
         var anim = view.get(AnimationType, entity);
