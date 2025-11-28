@@ -29,11 +29,11 @@ pub const TemporalFade = struct {
 
 /// Update fade effects
 pub fn fadeUpdateSystem(
-    registry: *ecs.Registry(u32),
+    registry: *ecs.Registry,
     dt: f32,
 ) void {
     var view = registry.view(.{ Fade, Render }, .{});
-    var iter = view.iterator();
+    var iter = @TypeOf(view).Iterator.init(&view);
 
     while (iter.next()) |entity| {
         var fade = view.get(Fade, entity);
@@ -58,15 +58,15 @@ pub fn fadeUpdateSystem(
 
 /// Update temporal fade based on game time
 pub fn temporalFadeSystem(
-    registry: *ecs.Registry(u32),
+    registry: *ecs.Registry,
     current_hour: f32,
 ) void {
     var view = registry.view(.{ TemporalFade, Render }, .{});
-    var iter = view.iterator();
+    var iter = @TypeOf(view).Iterator.init(&view);
 
-    while (iter.next()) |_| {
-        const temporal = view.getConst(TemporalFade, iter.entity);
-        var render = view.get(Render, iter.entity);
+    while (iter.next()) |entity| {
+        const temporal = view.getConst(TemporalFade, entity);
+        var render = view.get(Render, entity);
 
         // Calculate fade factor based on time
         var alpha: f32 = 1.0;
@@ -99,11 +99,11 @@ pub const Flash = struct {
 
 /// Update flash effects
 pub fn flashUpdateSystem(
-    registry: *ecs.Registry(u32),
+    registry: *ecs.Registry,
     dt: f32,
 ) void {
     var view = registry.view(.{ Flash, Render }, .{});
-    var iter = view.iterator();
+    var iter = @TypeOf(view).Iterator.init(&view);
 
     while (iter.next()) |entity| {
         var flash = view.get(Flash, entity);

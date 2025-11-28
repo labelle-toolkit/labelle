@@ -27,11 +27,12 @@ pub const TextureManager = struct {
     }
 
     /// Load an atlas from JSON and texture files
+    /// Note: json_path and texture_path must be null-terminated string literals
     pub fn loadAtlas(
         self: *TextureManager,
         name: []const u8,
-        json_path: []const u8,
-        texture_path: []const u8,
+        json_path: [:0]const u8,
+        texture_path: [:0]const u8,
     ) !void {
         var atlas = SpriteAtlas.init(self.allocator);
         errdefer atlas.deinit();

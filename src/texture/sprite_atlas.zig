@@ -77,23 +77,21 @@ pub const SpriteAtlas = struct {
     }
 
     /// Load atlas from TexturePacker JSON file
-    pub fn loadFromFile(self: *SpriteAtlas, json_path: []const u8, texture_path: []const u8) !void {
+    /// Note: json_path and texture_path must be null-terminated string literals
+    pub fn loadFromFile(self: *SpriteAtlas, json_path: [:0]const u8, texture_path: [:0]const u8) !void {
         // Load texture
-        self.texture = rl.loadTexture(@ptrCast(texture_path));
+        self.texture = rl.loadTexture(texture_path) catch {
+            return error.TextureLoadFailed;
+        };
         if (self.texture.id == 0) {
             return error.TextureLoadFailed;
         }
 
         // Load and parse JSON
-        const json_path_z: [*:0]const u8 = @ptrCast(json_path);
-        const file_data = rl.loadFileText(json_path_z);
-        if (file_data == null) {
-            return error.JsonLoadFailed;
-        }
+        const file_data = rl.loadFileText(json_path);
         defer rl.unloadFileText(file_data);
 
-        const json_slice = std.mem.span(file_data);
-        try self.parseJson(json_slice);
+        try self.parseJson(file_data);
     }
 
     /// Load atlas from JSON string (for testing without files)

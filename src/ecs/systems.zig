@@ -22,7 +22,7 @@ pub const Position = struct {
 /// Sorts by z_index for proper layering
 pub fn spriteRenderSystem(
     comptime PositionType: type,
-    registry: *ecs.Registry(u32),
+    registry: *ecs.Registry,
     renderer: *Renderer,
 ) void {
     // Get all renderable entities
@@ -30,12 +30,12 @@ pub fn spriteRenderSystem(
 
     // Collect entities for sorting
     var entities = std.ArrayList(struct {
-        entity: ecs.Entity(u32),
+        entity: ecs.Registry.Entity,
         z_index: u8,
     }).init(renderer.allocator);
     defer entities.deinit();
 
-    var iter = view.iterator();
+    var iter = @TypeOf(view).Iterator.init(&view);
     while (iter.next()) |entity| {
         const render = view.getConst(Render, entity);
         entities.append(.{
@@ -75,7 +75,7 @@ pub fn spriteRenderSystem(
 
 /// Update all animations
 pub fn animationUpdateSystem(
-    registry: *ecs.Registry(u32),
+    registry: *ecs.Registry,
     dt: f32,
 ) void {
     var view = registry.view(.{Animation}, .{});
@@ -90,12 +90,12 @@ pub fn animationUpdateSystem(
 /// Update animation sprites based on current frame
 /// This system updates the Render component's sprite_name based on Animation state
 pub fn animationSpriteUpdateSystem(
-    comptime sprite_prefix_fn: fn (ecs.Entity(u32), *ecs.Registry(u32)) []const u8,
-    registry: *ecs.Registry(u32),
+    comptime sprite_prefix_fn: fn (ecs.Registry.Entity, *ecs.Registry) []const u8,
+    registry: *ecs.Registry,
     sprite_name_buffer: []u8,
 ) void {
     var view = registry.view(.{ Animation, Render }, .{});
-    var iter = view.iterator();
+    var iter = @TypeOf(view).Iterator.init(&view);
 
     while (iter.next()) |entity| {
         const anim = view.getConst(Animation, entity);
@@ -119,7 +119,7 @@ pub fn animationSpriteUpdateSystem(
 /// Simple animation render that combines update and render
 pub fn animatedSpriteRenderSystem(
     comptime PositionType: type,
-    registry: *ecs.Registry(u32),
+    registry: *ecs.Registry,
     renderer: *Renderer,
     dt: f32,
 ) void {

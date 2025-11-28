@@ -12,6 +12,12 @@ const rl = @import("raylib");
 const gfx = @import("raylib-ecs-gfx");
 
 pub fn main() !void {
+    // CI test mode - hidden window, auto-screenshot and exit
+    const ci_test = std.posix.getenv("CI_TEST") != null;
+    if (ci_test) {
+        rl.setConfigFlags(.{ .window_hidden = true });
+    }
+
     // Initialize raylib
     rl.initWindow(800, 600, "Example 04: Camera");
     defer rl.closeWindow();
@@ -39,22 +45,29 @@ pub fn main() !void {
         .{ .x = 300, .y = 900, .w = 200, .h = 100, .color = rl.Color.sky_blue },
     };
 
+    var frame_count: u32 = 0;
+
     // Main loop
     while (!rl.windowShouldClose()) {
+        frame_count += 1;
+        if (ci_test) {
+            if (frame_count == 30) rl.takeScreenshot("screenshot_04.png");
+            if (frame_count == 35) break;
+        }
         const dt = rl.getFrameTime();
 
         // Camera pan with arrow keys
         const pan_speed: f32 = 400.0;
-        if (rl.isKeyDown(rl.KeyboardKey.key_left) or rl.isKeyDown(rl.KeyboardKey.key_a)) {
+        if (rl.isKeyDown(rl.KeyboardKey.left) or rl.isKeyDown(rl.KeyboardKey.a)) {
             camera.pan(-pan_speed * dt, 0);
         }
-        if (rl.isKeyDown(rl.KeyboardKey.key_right) or rl.isKeyDown(rl.KeyboardKey.key_d)) {
+        if (rl.isKeyDown(rl.KeyboardKey.right) or rl.isKeyDown(rl.KeyboardKey.d)) {
             camera.pan(pan_speed * dt, 0);
         }
-        if (rl.isKeyDown(rl.KeyboardKey.key_up) or rl.isKeyDown(rl.KeyboardKey.key_w)) {
+        if (rl.isKeyDown(rl.KeyboardKey.up) or rl.isKeyDown(rl.KeyboardKey.w)) {
             camera.pan(0, -pan_speed * dt);
         }
-        if (rl.isKeyDown(rl.KeyboardKey.key_down) or rl.isKeyDown(rl.KeyboardKey.key_s)) {
+        if (rl.isKeyDown(rl.KeyboardKey.down) or rl.isKeyDown(rl.KeyboardKey.s)) {
             camera.pan(0, pan_speed * dt);
         }
 
@@ -65,21 +78,21 @@ pub fn main() !void {
         }
 
         // Zoom with +/- keys
-        if (rl.isKeyDown(rl.KeyboardKey.key_equal)) {
+        if (rl.isKeyDown(rl.KeyboardKey.equal)) {
             camera.zoomBy(dt);
         }
-        if (rl.isKeyDown(rl.KeyboardKey.key_minus)) {
+        if (rl.isKeyDown(rl.KeyboardKey.minus)) {
             camera.zoomBy(-dt);
         }
 
         // Reset camera with R
-        if (rl.isKeyPressed(rl.KeyboardKey.key_r)) {
+        if (rl.isKeyPressed(rl.KeyboardKey.r)) {
             camera.setPosition(400, 300);
             camera.setZoom(1.0);
         }
 
         // Toggle bounds with B
-        if (rl.isKeyPressed(rl.KeyboardKey.key_b)) {
+        if (rl.isKeyPressed(rl.KeyboardKey.b)) {
             if (camera.bounds.isEnabled()) {
                 camera.clearBounds();
             } else {

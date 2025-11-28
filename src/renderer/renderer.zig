@@ -51,11 +51,12 @@ pub const Renderer = struct {
     }
 
     /// Load a sprite atlas
+    /// Note: json_path and texture_path must be null-terminated string literals
     pub fn loadAtlas(
         self: *Renderer,
         name: []const u8,
-        json_path: []const u8,
-        texture_path: []const u8,
+        json_path: [:0]const u8,
+        texture_path: [:0]const u8,
     ) !void {
         try self.texture_manager.loadAtlas(name, json_path, texture_path);
     }

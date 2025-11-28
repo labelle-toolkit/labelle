@@ -12,6 +12,12 @@ const rl = @import("raylib");
 const gfx = @import("raylib-ecs-gfx");
 
 pub fn main() !void {
+    // CI test mode - hidden window, auto-screenshot and exit
+    const ci_test = std.posix.getenv("CI_TEST") != null;
+    if (ci_test) {
+        rl.setConfigFlags(.{ .window_hidden = true });
+    }
+
     // Initialize raylib
     rl.initWindow(800, 600, "Example 01: Basic Sprite");
     defer rl.closeWindow();
@@ -38,8 +44,15 @@ pub fn main() !void {
         .{ .x = 200, .y = 400 },
     };
 
+    var frame_count: u32 = 0;
+
     // Main loop
     while (!rl.windowShouldClose()) {
+        frame_count += 1;
+        if (ci_test) {
+            if (frame_count == 30) rl.takeScreenshot("screenshot_01.png");
+            if (frame_count == 35) break;
+        }
         rl.beginDrawing();
         defer rl.endDrawing();
 

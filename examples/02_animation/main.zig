@@ -12,6 +12,12 @@ const rl = @import("raylib");
 const gfx = @import("raylib-ecs-gfx");
 
 pub fn main() !void {
+    // CI test mode - hidden window, auto-screenshot and exit
+    const ci_test = std.posix.getenv("CI_TEST") != null;
+    if (ci_test) {
+        rl.setConfigFlags(.{ .window_hidden = true });
+    }
+
     // Initialize raylib
     rl.initWindow(800, 600, "Example 02: Animation");
     defer rl.closeWindow();
@@ -38,25 +44,31 @@ pub fn main() !void {
 
     var current_type: gfx.AnimationType = .idle;
     var sprite_buffer: [256]u8 = undefined;
+    var frame_count: u32 = 0;
 
     // Main loop
     while (!rl.windowShouldClose()) {
+        frame_count += 1;
+        if (ci_test) {
+            if (frame_count == 30) rl.takeScreenshot("screenshot_02.png");
+            if (frame_count == 35) break;
+        }
         const dt = rl.getFrameTime();
 
         // Handle input for animation switching
-        if (rl.isKeyPressed(rl.KeyboardKey.key_one)) {
+        if (rl.isKeyPressed(rl.KeyboardKey.one)) {
             current_type = .idle;
             anim_player.transitionTo(&animation, .idle);
         }
-        if (rl.isKeyPressed(rl.KeyboardKey.key_two)) {
+        if (rl.isKeyPressed(rl.KeyboardKey.two)) {
             current_type = .walk;
             anim_player.transitionTo(&animation, .walk);
         }
-        if (rl.isKeyPressed(rl.KeyboardKey.key_three)) {
+        if (rl.isKeyPressed(rl.KeyboardKey.three)) {
             current_type = .run;
             anim_player.transitionTo(&animation, .run);
         }
-        if (rl.isKeyPressed(rl.KeyboardKey.key_four)) {
+        if (rl.isKeyPressed(rl.KeyboardKey.four)) {
             current_type = .jump;
             anim_player.transitionTo(&animation, .jump);
         }
@@ -95,14 +107,16 @@ pub fn main() !void {
 
         // Draw frame number
         var frame_text: [32]u8 = undefined;
-        const frame_str = std.fmt.bufPrint(&frame_text, "Frame: {d}/{d}", .{
+        const frame_str = std.fmt.bufPrintZ(&frame_text, "Frame: {d}/{d}", .{
             animation.frame + 1,
             animation.total_frames,
         }) catch "?";
-        rl.drawText(@ptrCast(frame_str), center_x - 40, center_y + 50, 20, rl.Color.white);
+        rl.drawText(frame_str, center_x - 40, center_y + 50, 20, rl.Color.white);
 
-        // Draw sprite name
-        rl.drawText(@ptrCast(sprite_name), center_x - 60, center_y + 80, 16, rl.Color.light_gray);
+        // Draw sprite name (null-terminate it)
+        var sprite_name_z: [256]u8 = undefined;
+        const sprite_z = std.fmt.bufPrintZ(&sprite_name_z, "{s}", .{sprite_name}) catch "?";
+        rl.drawText(sprite_z, center_x - 60, center_y + 80, 16, rl.Color.light_gray);
 
         // Draw frame indicators
         const indicator_start_x = center_x - @as(i32, @intCast(animation.total_frames)) * 10;
@@ -123,9 +137,9 @@ pub fn main() !void {
 
         // Current animation info
         var anim_text: [64]u8 = undefined;
-        const anim_str = std.fmt.bufPrint(&anim_text, "Current: {s}", .{
+        const anim_str = std.fmt.bufPrintZ(&anim_text, "Current: {s}", .{
             current_type.toSpriteName(),
         }) catch "?";
-        rl.drawText(@ptrCast(anim_str), 10, 180, 16, rl.Color.white);
+        rl.drawText(anim_str, 10, 180, 16, rl.Color.white);
     }
 }

@@ -18,6 +18,12 @@ const Position = struct {
 };
 
 pub fn main() !void {
+    // CI test mode - hidden window, auto-screenshot and exit
+    const ci_test = std.posix.getenv("CI_TEST") != null;
+    if (ci_test) {
+        rl.setConfigFlags(.{ .window_hidden = true });
+    }
+
     // Initialize raylib
     rl.initWindow(800, 600, "Example 06: Visual Effects");
     defer rl.closeWindow();
@@ -29,7 +35,7 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     // Initialize ECS registry
-    var registry = ecs.Registry(u32).init(allocator);
+    var registry = ecs.Registry.init(allocator);
     defer registry.deinit();
 
     // Create entities for different effects
@@ -89,8 +95,15 @@ pub fn main() !void {
     var game_hour: f32 = 12.0; // Start at noon
     var time_speed: f32 = 2.0; // Hours per real second
 
+    var frame_count: u32 = 0;
+
     // Main loop
     while (!rl.windowShouldClose()) {
+        frame_count += 1;
+        if (ci_test) {
+            if (frame_count == 30) rl.takeScreenshot("screenshot_06.png");
+            if (frame_count == 35) break;
+        }
         const dt = rl.getFrameTime();
 
         // Update game time
@@ -98,15 +111,15 @@ pub fn main() !void {
         if (game_hour >= 24.0) game_hour -= 24.0;
 
         // Time controls
-        if (rl.isKeyDown(rl.KeyboardKey.key_up)) {
+        if (rl.isKeyDown(rl.KeyboardKey.up)) {
             time_speed = @min(10.0, time_speed + 1.0 * dt);
         }
-        if (rl.isKeyDown(rl.KeyboardKey.key_down)) {
+        if (rl.isKeyDown(rl.KeyboardKey.down)) {
             time_speed = @max(0.1, time_speed - 1.0 * dt);
         }
 
         // Reset fades with R
-        if (rl.isKeyPressed(rl.KeyboardKey.key_r)) {
+        if (rl.isKeyPressed(rl.KeyboardKey.r)) {
             // Reset fade in
             if (registry.tryGet(gfx.effects.Fade, fade_in_entity)) |fade| {
                 fade.alpha = 0;
@@ -127,7 +140,7 @@ pub fn main() !void {
         }
 
         // Trigger flash with F
-        if (rl.isKeyPressed(rl.KeyboardKey.key_f)) {
+        if (rl.isKeyPressed(rl.KeyboardKey.f)) {
             // Store original tint
             const original = if (registry.tryGet(gfx.Render, flash_entity)) |r| r.tint else rl.Color.blue;
 
@@ -157,7 +170,7 @@ pub fn main() !void {
         // Draw entities (placeholder rectangles)
         {
             var view = registry.view(.{ Position, gfx.Render }, .{});
-            var iter = view.iterator();
+            var iter = @TypeOf(view).Iterator.init(&view);
             while (iter.next()) |entity| {
                 const pos = view.getConst(Position, entity);
                 const render = view.getConst(gfx.Render, entity);
@@ -187,14 +200,14 @@ pub fn main() !void {
 
         // Current alpha values
         if (registry.tryGet(gfx.effects.Fade, fade_in_entity)) |fade| {
-            var buf: [32]u8 = undefined;
-            const str = std.fmt.bufPrint(&buf, "Alpha: {d:.2}", .{fade.alpha}) catch "?";
-            rl.drawText(@ptrCast(str), 115, 290, 12, rl.Color.light_gray);
+            var buf: [32:0]u8 = undefined;
+            _ = std.fmt.bufPrintZ(&buf, "Alpha: {d:.2}", .{fade.alpha}) catch "?";
+            rl.drawText(&buf, 115, 290, 12, rl.Color.light_gray);
         }
         if (registry.tryGet(gfx.effects.Fade, fade_out_entity)) |fade| {
-            var buf: [32]u8 = undefined;
-            const str = std.fmt.bufPrint(&buf, "Alpha: {d:.2}", .{fade.alpha}) catch "?";
-            rl.drawText(@ptrCast(str), 315, 290, 12, rl.Color.light_gray);
+            var buf: [32:0]u8 = undefined;
+            _ = std.fmt.bufPrintZ(&buf, "Alpha: {d:.2}", .{fade.alpha}) catch "?";
+            rl.drawText(&buf, 315, 290, 12, rl.Color.light_gray);
         }
 
         // UI
@@ -204,13 +217,13 @@ pub fn main() !void {
         // Time display
         const hours = @as(u32, @intFromFloat(game_hour));
         const minutes = @as(u32, @intFromFloat((game_hour - @as(f32, @floatFromInt(hours))) * 60));
-        var time_buf: [64]u8 = undefined;
-        const time_str = std.fmt.bufPrint(&time_buf, "Game Time: {d:0>2}:{d:0>2} (Speed: {d:.1}x)", .{
+        var time_buf: [64:0]u8 = undefined;
+        _ = std.fmt.bufPrintZ(&time_buf, "Game Time: {d:0>2}:{d:0>2} (Speed: {d:.1}x)", .{
             hours,
             minutes,
             time_speed,
         }) catch "?";
-        rl.drawText(@ptrCast(time_str), 10, 60, 16, rl.Color.sky_blue);
+        rl.drawText(&time_buf, 10, 60, 16, rl.Color.sky_blue);
 
         // Day/night indicator
         const is_night = game_hour >= 18.0 or game_hour < 6.0;

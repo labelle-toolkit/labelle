@@ -12,6 +12,12 @@ const rl = @import("raylib");
 const gfx = @import("raylib-ecs-gfx");
 
 pub fn main() !void {
+    // CI test mode - hidden window, auto-screenshot and exit
+    const ci_test = std.posix.getenv("CI_TEST") != null;
+    if (ci_test) {
+        rl.setConfigFlags(.{ .window_hidden = true });
+    }
+
     // Initialize raylib
     rl.initWindow(800, 600, "Example 03: Sprite Atlas");
     defer rl.closeWindow();
@@ -50,13 +56,20 @@ pub fn main() !void {
         "button_normal",
     };
 
+    var frame_count: u32 = 0;
+
     // Main loop
     while (!rl.windowShouldClose()) {
+        frame_count += 1;
+        if (ci_test) {
+            if (frame_count == 30) rl.takeScreenshot("screenshot_03.png");
+            if (frame_count == 35) break;
+        }
         // Handle input
-        if (rl.isKeyPressed(rl.KeyboardKey.key_left)) {
+        if (rl.isKeyPressed(rl.KeyboardKey.left)) {
             if (selected_atlas > 0) selected_atlas -= 1;
         }
-        if (rl.isKeyPressed(rl.KeyboardKey.key_right)) {
+        if (rl.isKeyPressed(rl.KeyboardKey.right)) {
             if (selected_atlas < demo_atlases.len - 1) selected_atlas += 1;
         }
 

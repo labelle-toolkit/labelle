@@ -23,19 +23,26 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/lib.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = &.{
+            .{ .name = "raylib", .module = raylib },
+            .{ .name = "ecs", .module = ecs },
+        },
     });
-    lib_mod.addImport("raylib", raylib);
-    lib_mod.addImport("ecs", ecs);
 
     // Static library for linking
-    const lib = b.addStaticLibrary(.{
+    const lib = b.addLibrary(.{
+        .linkage = .static,
         .name = "raylib-ecs-gfx",
-        .root_source_file = b.path("src/lib.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/lib.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "raylib", .module = raylib },
+                .{ .name = "ecs", .module = ecs },
+            },
+        }),
     });
-    lib.root_module.addImport("raylib", raylib);
-    lib.root_module.addImport("ecs", ecs);
     lib.linkLibrary(raylib_artifact);
     b.installArtifact(lib);
 
@@ -53,13 +60,17 @@ pub fn build(b: *std.Build) void {
     for (examples) |example| {
         const exe = b.addExecutable(.{
             .name = example.name,
-            .root_source_file = b.path(example.path),
-            .target = target,
-            .optimize = optimize,
+            .root_module = b.createModule(.{
+                .root_source_file = b.path(example.path),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{
+                    .{ .name = "raylib-ecs-gfx", .module = lib_mod },
+                    .{ .name = "raylib", .module = raylib },
+                    .{ .name = "ecs", .module = ecs },
+                },
+            }),
         });
-        exe.root_module.addImport("raylib-ecs-gfx", lib_mod);
-        exe.root_module.addImport("raylib", raylib);
-        exe.root_module.addImport("ecs", ecs);
         exe.linkLibrary(raylib_artifact);
 
         const run_cmd = b.addRunArtifact(exe);
@@ -75,12 +86,16 @@ pub fn build(b: *std.Build) void {
 
     // Tests
     const lib_tests = b.addTest(.{
-        .root_source_file = b.path("src/lib.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/lib.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "raylib", .module = raylib },
+                .{ .name = "ecs", .module = ecs },
+            },
+        }),
     });
-    lib_tests.root_module.addImport("raylib", raylib);
-    lib_tests.root_module.addImport("ecs", ecs);
 
     const run_lib_tests = b.addRunArtifact(lib_tests);
     const test_step = b.step("test", "Run library tests");

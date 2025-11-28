@@ -16,6 +16,12 @@ const Position = struct {
 };
 
 pub fn main() !void {
+    // CI test mode - hidden window, auto-screenshot and exit
+    const ci_test = std.posix.getenv("CI_TEST") != null;
+    if (ci_test) {
+        rl.setConfigFlags(.{ .window_hidden = true });
+    }
+
     // Initialize raylib
     rl.initWindow(800, 600, "Example 07: TexturePacker Fixtures");
     defer rl.closeWindow();
@@ -27,7 +33,7 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     // Initialize ECS registry
-    var registry = ecs.Registry(u32).init(allocator);
+    var registry = ecs.Registry.init(allocator);
     defer registry.deinit();
 
     // Initialize renderer
@@ -127,31 +133,37 @@ pub fn main() !void {
 
     var current_anim: gfx.AnimationType = .idle;
     var flip_x = false;
+    var frame_count: u32 = 0;
 
     // Main loop
     while (!rl.windowShouldClose()) {
+        frame_count += 1;
+        if (ci_test) {
+            if (frame_count == 30) rl.takeScreenshot("screenshot_07.png");
+            if (frame_count == 35) break;
+        }
         const dt = rl.getFrameTime();
 
         // Player input for animation changes
         var moving = false;
 
-        if (rl.isKeyDown(rl.KeyboardKey.key_left) or rl.isKeyDown(rl.KeyboardKey.key_a)) {
+        if (rl.isKeyDown(rl.KeyboardKey.left) or rl.isKeyDown(rl.KeyboardKey.a)) {
             moving = true;
             flip_x = true;
             var pos = registry.get(Position, player);
             pos.x -= 150 * dt;
         }
-        if (rl.isKeyDown(rl.KeyboardKey.key_right) or rl.isKeyDown(rl.KeyboardKey.key_d)) {
+        if (rl.isKeyDown(rl.KeyboardKey.right) or rl.isKeyDown(rl.KeyboardKey.d)) {
             moving = true;
             flip_x = false;
             var pos = registry.get(Position, player);
             pos.x += 150 * dt;
         }
-        if (rl.isKeyDown(rl.KeyboardKey.key_left_shift)) {
+        if (rl.isKeyDown(rl.KeyboardKey.left_shift)) {
             moving = true;
             current_anim = .run;
         }
-        if (rl.isKeyPressed(rl.KeyboardKey.key_space)) {
+        if (rl.isKeyPressed(rl.KeyboardKey.space)) {
             current_anim = .jump;
         }
 
@@ -199,7 +211,7 @@ pub fn main() !void {
         // Draw all entities
         {
             var view = registry.view(.{ Position, gfx.Render }, .{});
-            var iter = view.iterator();
+            var iter = @TypeOf(view).Iterator.init(&view);
             while (iter.next()) |entity| {
                 const pos = view.getConst(Position, entity);
                 const ren = view.getConst(gfx.Render, entity);
@@ -221,13 +233,13 @@ pub fn main() !void {
         rl.drawText("TexturePacker Fixtures Example", 10, 10, 20, rl.Color.white);
         rl.drawText("A/D: Walk | Shift: Run | Space: Jump", 10, 40, 16, rl.Color.light_gray);
 
-        var anim_buf: [64]u8 = undefined;
-        const anim_str = std.fmt.bufPrint(&anim_buf, "Animation: {s} Frame: {d}/{d}", .{
+        var anim_buf: [64:0]u8 = undefined;
+        _ = std.fmt.bufPrintZ(&anim_buf, "Animation: {s} Frame: {d}/{d}", .{
             current_anim.toSpriteName(),
             anim.frame + 1,
             anim.total_frames,
         }) catch "?";
-        rl.drawText(@ptrCast(anim_str), 10, 70, 16, rl.Color.sky_blue);
+        rl.drawText(&anim_buf, 10, 70, 16, rl.Color.sky_blue);
 
         rl.drawText("Items:", 100, 460, 14, rl.Color.white);
         rl.drawText("Tiles:", 100, 520, 14, rl.Color.white);
