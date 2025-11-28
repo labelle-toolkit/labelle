@@ -24,13 +24,16 @@ const Velocity = struct {
     dy: f32 = 0,
 };
 
-// Define animation types for this example
+// Define animation types for this example with config
 const AnimType = enum {
     idle,
     walk,
 
-    pub fn toSpriteName(self: AnimType) []const u8 {
-        return @tagName(self);
+    pub fn config(self: AnimType) gfx.AnimConfig {
+        return switch (self) {
+            .idle => .{ .frames = 4, .frame_duration = 0.2 },
+            .walk => .{ .frames = 6, .frame_duration = 0.15 },
+        };
     }
 };
 
@@ -103,14 +106,7 @@ pub fn main() !void {
         .sprite_name = "player",
         .tint = rl.Color.sky_blue,
     });
-    registry.add(player, Animation{
-        .frame = 0,
-        .total_frames = 4,
-        .frame_duration = 0.2,
-        .anim_type = .idle,
-        .looping = true,
-        .playing = true,
-    });
+    registry.add(player, Animation.init(.idle));
 
     // Enemy character (z=40)
     const enemy1 = registry.create();
@@ -121,14 +117,7 @@ pub fn main() !void {
         .sprite_name = "enemy",
         .tint = rl.Color.red,
     });
-    registry.add(enemy1, Animation{
-        .frame = 0,
-        .total_frames = 6,
-        .frame_duration = 0.15,
-        .anim_type = .walk,
-        .looping = true,
-        .playing = true,
-    });
+    registry.add(enemy1, Animation.init(.walk));
 
     // UI overlay (z=70)
     const ui_element = registry.create();
@@ -169,11 +158,11 @@ pub fn main() !void {
         var player_anim = registry.get(Animation, player);
         if (player_vel.dx != 0) {
             if (player_anim.anim_type != .walk) {
-                player_anim.setAnimation(.walk, 6);
+                player_anim.play(.walk);
             }
         } else {
             if (player_anim.anim_type != .idle) {
-                player_anim.setAnimation(.idle, 4);
+                player_anim.play(.idle);
             }
         }
 
