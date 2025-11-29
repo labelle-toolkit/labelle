@@ -24,6 +24,13 @@ pub fn build(b: *std.Build) void {
     });
     const zspec = zspec_dep.module("zspec");
 
+    // Sokol dependency (optional backend)
+    const sokol_dep = b.dependency("sokol", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const sokol = sokol_dep.module("sokol");
+
     // Main library module
     const lib_mod = b.addModule("labelle", .{
         .root_source_file = b.path("src/lib.zig"),
@@ -32,6 +39,7 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "raylib", .module = raylib },
             .{ .name = "ecs", .module = ecs },
+            .{ .name = "sokol", .module = sokol },
         },
     });
 
@@ -46,6 +54,7 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "raylib", .module = raylib },
                 .{ .name = "ecs", .module = ecs },
+                .{ .name = "sokol", .module = sokol },
             },
         }),
     });
@@ -88,6 +97,30 @@ pub fn build(b: *std.Build) void {
         // Also add full name version
         const full_step_name = b.fmt("run-{s}", .{example.name});
         const full_run_step = b.step(full_step_name, example.desc);
+        full_run_step.dependOn(&run_cmd.step);
+    }
+
+    // Sokol backend example (requires different linking)
+    {
+        const sokol_example = b.addExecutable(.{
+            .name = "09_sokol_backend",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("examples/09_sokol_backend/main.zig"),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{
+                    .{ .name = "labelle", .module = lib_mod },
+                    .{ .name = "sokol", .module = sokol },
+                    .{ .name = "ecs", .module = ecs },
+                },
+            }),
+        });
+
+        const run_cmd = b.addRunArtifact(sokol_example);
+        const run_step = b.step("run-example-09", "Sokol backend example");
+        run_step.dependOn(&run_cmd.step);
+
+        const full_run_step = b.step("run-09_sokol_backend", "Sokol backend example");
         full_run_step.dependOn(&run_cmd.step);
     }
 

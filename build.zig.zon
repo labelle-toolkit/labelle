@@ -17,6 +17,10 @@
             .url = "git+https://github.com/apotema/zspec?ref=v0.3.0#a3845bc64c2ef4840dda4f2cdae8a8cb4f992c7c",
             .hash = "zspec-0.3.0-jaKLbbqZAgAB-MBfy6M3HKB3jSTQ-TsNW9OxpLhLlav5",
         },
+        .sokol = .{
+            .url = "git+https://github.com/floooh/sokol-zig.git#bb1a4e95b243e655e788076c545ca6a1f6bf1558",
+            .hash = "sokol-0.1.0-pb1HK_0CLwBZEK_EZfeR-l9Mtt-BBIuucIZ-c5tLDZxc",
+        },
     },
 
     .paths = .{

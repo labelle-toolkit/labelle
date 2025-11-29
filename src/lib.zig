@@ -66,6 +66,17 @@
 //! var renderer = MyGfx.Renderer.init(allocator);
 //! var camera = MyGfx.Camera.init();
 //! ```
+//!
+//! ## Sokol Backend Usage
+//! ```zig
+//! const gfx = @import("labelle");
+//!
+//! // Create library types with sokol backend
+//! const SokolGfx = gfx.withBackend(gfx.SokolBackend);
+//!
+//! // Use sokol-backed types
+//! var renderer = SokolGfx.Renderer.init(allocator);
+//! ```
 
 const std = @import("std");
 pub const ecs = @import("ecs");
@@ -83,6 +94,8 @@ pub const raylib_backend = @import("backend/raylib_backend.zig");
 pub const RaylibBackend = raylib_backend.RaylibBackend;
 pub const mock_backend = @import("backend/mock_backend.zig");
 pub const MockBackend = mock_backend.MockBackend;
+pub const sokol_backend = @import("backend/sokol_backend.zig");
+pub const SokolBackend = sokol_backend.SokolBackend;
 
 // Default backend (raylib)
 pub const DefaultBackend = Backend(RaylibBackend);

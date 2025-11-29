@@ -1,0 +1,63 @@
+name: CI - Sokol Backend
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  sokol-backend-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Install dependencies for sokol and raylib
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgl1-mesa-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxi-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libwayland-dev \
+            libxkbcommon-dev \
+            libasound2-dev \
+            xvfb
+
+      - name: Build library
+        run: zig build
+
+      - name: Run sokol example
+        run: |
+          # Start virtual framebuffer for headless rendering
+          Xvfb :99 -screen 0 1024x768x24 &
+          export DISPLAY=:99
+          sleep 2
+
+          echo "Running sokol backend example..."
+          if ! zig build run-example-09; then
+            echo "::error::Sokol example failed to run"
+            exit 1
+          fi
+
+          echo "Sokol backend example completed successfully!"
+
+      - name: Create summary
+        run: |
+          echo "## 🔧 Sokol Backend Test" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Sokol backend example ran successfully!**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This validates that the \`Backend(comptime Impl)\` abstraction works correctly with a non-raylib renderer." >> $GITHUB_STEP_SUMMARY
