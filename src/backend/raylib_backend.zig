@@ -60,7 +60,7 @@ pub const RaylibBackend = struct {
 
     /// Load texture from file
     pub fn loadTexture(path: [:0]const u8) !Texture {
-        const tex = rl.loadTexture(path);
+        const tex = rl.loadTexture(path) catch return error.TextureLoadFailed;
         if (tex.id == 0) return error.TextureLoadFailed;
         return tex;
     }

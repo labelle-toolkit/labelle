@@ -54,6 +54,11 @@ pub fn CameraWith(comptime BackendType: type) type {
             };
         }
 
+        /// Alias for toBackend() - backwards compatible with raylib examples
+        pub fn toRaylib(self: *const Self) BackendType.Camera2D {
+            return self.toBackend();
+        }
+
         /// Move camera by delta
         pub fn pan(self: *Self, dx: f32, dy: f32) void {
             self.x += dx / self.zoom;
