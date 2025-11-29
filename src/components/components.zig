@@ -2,9 +2,19 @@
 //!
 //! These components can be added to entities to enable rendering.
 //! Animation types are user-defined via comptime enum parameters.
+//!
+//! Components use a generic Color type that is backend-agnostic.
+//! The default exports use the raylib backend for backwards compatibility.
 
 const std = @import("std");
-const rl = @import("raylib");
+const backend_mod = @import("../backend/backend.zig");
+const raylib_backend = @import("../backend/raylib_backend.zig");
+
+/// Default backend for backwards compatibility
+pub const DefaultBackend = backend_mod.Backend(raylib_backend.RaylibBackend);
+
+/// Default Color type (raylib) for backwards compatibility
+pub const Color = DefaultBackend.Color;
 
 /// Position component for entity world position
 pub const Position = struct {
@@ -23,46 +33,58 @@ pub const AnimConfig = struct {
 };
 
 /// Static sprite component - for non-animated entities
-pub const Sprite = struct {
-    /// Name/key to look up sprite in atlas (e.g., "environment/tree_01")
-    name: []const u8,
-    /// Z-index for draw order (higher = rendered on top)
-    z_index: u8 = 0,
-    /// Tint color (default white = no tint)
-    tint: rl.Color = rl.Color.white,
-    /// Scale factor
-    scale: f32 = 1.0,
-    /// Rotation in degrees
-    rotation: f32 = 0,
-    /// Flip horizontally
-    flip_x: bool = false,
-    /// Flip vertically
-    flip_y: bool = false,
-    /// Offset from entity position for rendering
-    offset_x: f32 = 0,
-    offset_y: f32 = 0,
-};
+/// Uses generic color type parameterized by backend
+pub fn SpriteWith(comptime BackendType: type) type {
+    return struct {
+        /// Name/key to look up sprite in atlas (e.g., "environment/tree_01")
+        name: []const u8,
+        /// Z-index for draw order (higher = rendered on top)
+        z_index: u8 = 0,
+        /// Tint color (default white = no tint)
+        tint: BackendType.Color = BackendType.white,
+        /// Scale factor
+        scale: f32 = 1.0,
+        /// Rotation in degrees
+        rotation: f32 = 0,
+        /// Flip horizontally
+        flip_x: bool = false,
+        /// Flip vertically
+        flip_y: bool = false,
+        /// Offset from entity position for rendering
+        offset_x: f32 = 0,
+        offset_y: f32 = 0,
+    };
+}
+
+/// Static sprite component - default raylib backend for backwards compatibility
+pub const Sprite = SpriteWith(DefaultBackend);
 
 /// Render component - marks an entity for rendering
-pub const Render = struct {
-    /// Z-index for draw order (higher = rendered on top)
-    z_index: u8 = 0,
-    /// Name/key to look up sprite in atlas
-    sprite_name: []const u8 = "",
-    /// Offset from entity position for rendering
-    offset_x: f32 = 0,
-    offset_y: f32 = 0,
-    /// Tint color (default white = no tint)
-    tint: rl.Color = rl.Color.white,
-    /// Scale factor
-    scale: f32 = 1.0,
-    /// Rotation in degrees
-    rotation: f32 = 0,
-    /// Flip horizontally
-    flip_x: bool = false,
-    /// Flip vertically
-    flip_y: bool = false,
-};
+/// Uses generic color type parameterized by backend
+pub fn RenderWith(comptime BackendType: type) type {
+    return struct {
+        /// Z-index for draw order (higher = rendered on top)
+        z_index: u8 = 0,
+        /// Name/key to look up sprite in atlas
+        sprite_name: []const u8 = "",
+        /// Offset from entity position for rendering
+        offset_x: f32 = 0,
+        offset_y: f32 = 0,
+        /// Tint color (default white = no tint)
+        tint: BackendType.Color = BackendType.white,
+        /// Scale factor
+        scale: f32 = 1.0,
+        /// Rotation in degrees
+        rotation: f32 = 0,
+        /// Flip horizontally
+        flip_x: bool = false,
+        /// Flip vertically
+        flip_y: bool = false,
+    };
+}
+
+/// Render component - default raylib backend for backwards compatibility
+pub const Render = RenderWith(DefaultBackend);
 
 /// Sprite location in a texture atlas
 pub const SpriteLocation = struct {
@@ -110,33 +132,10 @@ pub const DefaultAnimationType = enum {
     }
 };
 
-/// Generic animation component for animated sprites.
-/// Takes a comptime enum type parameter for custom animation types.
+/// Generic animation component for animated sprites with custom backend.
+/// Takes a comptime enum type and backend type parameters.
 /// The enum must have a `config()` method that returns AnimConfig.
-///
-/// Example usage:
-/// ```zig
-/// const Animations = struct {
-///     const Player = enum {
-///         idle,
-///         walk,
-///         attack,
-///
-///         pub fn config(self: @This()) AnimConfig {
-///             return switch (self) {
-///                 .idle => .{ .frames = 4, .frame_duration = 0.2 },
-///                 .walk => .{ .frames = 6, .frame_duration = 0.1 },
-///                 .attack => .{ .frames = 5, .frame_duration = 0.08 },
-///             };
-///         }
-///     };
-/// };
-///
-/// // Create animation - config is auto-loaded from enum
-/// var anim = Animation(Animations.Player).init(.idle);
-/// anim.play(.walk); // Switch animation
-/// ```
-pub fn Animation(comptime AnimType: type) type {
+pub fn AnimationWith(comptime AnimType: type, comptime BackendType: type) type {
     // Validate that AnimType is an enum
     if (@typeInfo(AnimType) != .@"enum") {
         @compileError("Animation type parameter must be an enum");
@@ -150,6 +149,7 @@ pub fn Animation(comptime AnimType: type) type {
     return struct {
         const Self = @This();
         pub const AnimationEnumType = AnimType;
+        pub const Backend = BackendType;
 
         /// Current animation type
         anim_type: AnimType,
@@ -162,7 +162,7 @@ pub fn Animation(comptime AnimType: type) type {
         /// Z-index for draw order (higher = rendered on top)
         z_index: u8 = 0,
         /// Tint color (default white = no tint)
-        tint: rl.Color = rl.Color.white,
+        tint: BackendType.Color = BackendType.white,
         /// Scale factor
         scale: f32 = 1.0,
         /// Rotation in degrees
@@ -316,12 +316,42 @@ pub fn Animation(comptime AnimType: type) type {
     };
 }
 
+/// Generic animation component for animated sprites (uses default backend).
+/// Takes a comptime enum type parameter for custom animation types.
+/// The enum must have a `config()` method that returns AnimConfig.
+///
+/// Example usage:
+/// ```zig
+/// const Animations = struct {
+///     const Player = enum {
+///         idle,
+///         walk,
+///         attack,
+///
+///         pub fn config(self: @This()) AnimConfig {
+///             return switch (self) {
+///                 .idle => .{ .frames = 4, .frame_duration = 0.2 },
+///                 .walk => .{ .frames = 6, .frame_duration = 0.1 },
+///                 .attack => .{ .frames = 5, .frame_duration = 0.08 },
+///             };
+///         }
+///     };
+/// };
+///
+/// // Create animation - config is auto-loaded from enum
+/// var anim = Animation(Animations.Player).init(.idle);
+/// anim.play(.walk); // Switch animation
+/// ```
+pub fn Animation(comptime AnimType: type) type {
+    return AnimationWith(AnimType, DefaultBackend);
+}
+
 /// Convenience alias for Animation with default animation types
 pub const DefaultAnimation = Animation(DefaultAnimationType);
 
-/// Container for multiple animations on an entity
-pub fn AnimationsArray(comptime AnimType: type) type {
-    const AnimationT = Animation(AnimType);
+/// Container for multiple animations on an entity (with custom backend)
+pub fn AnimationsArrayWith(comptime AnimType: type, comptime BackendType: type) type {
+    const AnimationT = AnimationWith(AnimType, BackendType);
 
     return struct {
         const Self = @This();
@@ -339,6 +369,11 @@ pub fn AnimationsArray(comptime AnimType: type) type {
             }
         }
     };
+}
+
+/// Container for multiple animations on an entity
+pub fn AnimationsArray(comptime AnimType: type) type {
+    return AnimationsArrayWith(AnimType, DefaultBackend);
 }
 
 /// Convenience alias for AnimationsArray with default animation types

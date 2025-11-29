@@ -1,99 +1,111 @@
 //! Texture Manager - handles loading and caching of textures and atlases
 
 const std = @import("std");
-const rl = @import("raylib");
-const SpriteAtlas = @import("sprite_atlas.zig").SpriteAtlas;
-const SpriteData = @import("sprite_atlas.zig").SpriteData;
+const backend_mod = @import("../backend/backend.zig");
+const raylib_backend = @import("../backend/raylib_backend.zig");
+const sprite_atlas_mod = @import("sprite_atlas.zig");
+const SpriteData = sprite_atlas_mod.SpriteData;
 
-/// Manages multiple texture atlases
-pub const TextureManager = struct {
-    atlases: std.StringHashMap(SpriteAtlas),
-    allocator: std.mem.Allocator,
+/// Texture manager with custom backend support
+pub fn TextureManagerWith(comptime BackendType: type) type {
+    const SpriteAtlas = sprite_atlas_mod.SpriteAtlasWith(BackendType);
 
-    pub fn init(allocator: std.mem.Allocator) TextureManager {
-        return .{
-            .atlases = std.StringHashMap(SpriteAtlas).init(allocator),
-            .allocator = allocator,
-        };
-    }
+    return struct {
+        const Self = @This();
+        pub const Backend = BackendType;
 
-    pub fn deinit(self: *TextureManager) void {
-        var iter = self.atlases.iterator();
-        while (iter.next()) |entry| {
-            entry.value_ptr.deinit();
-            self.allocator.free(entry.key_ptr.*);
+        atlases: std.StringHashMap(SpriteAtlas),
+        allocator: std.mem.Allocator,
+
+        pub fn init(allocator: std.mem.Allocator) Self {
+            return .{
+                .atlases = std.StringHashMap(SpriteAtlas).init(allocator),
+                .allocator = allocator,
+            };
         }
-        self.atlases.deinit();
-    }
 
-    /// Load an atlas from JSON and texture files
-    /// Note: json_path and texture_path must be null-terminated string literals
-    pub fn loadAtlas(
-        self: *TextureManager,
-        name: []const u8,
-        json_path: [:0]const u8,
-        texture_path: [:0]const u8,
-    ) !void {
-        var atlas = SpriteAtlas.init(self.allocator);
-        errdefer atlas.deinit();
+        pub fn deinit(self: *Self) void {
+            var iter = self.atlases.iterator();
+            while (iter.next()) |entry| {
+                entry.value_ptr.deinit();
+                self.allocator.free(entry.key_ptr.*);
+            }
+            self.atlases.deinit();
+        }
 
-        try atlas.loadFromFile(json_path, texture_path);
+        /// Load an atlas from JSON and texture files
+        /// Note: json_path and texture_path must be null-terminated string literals
+        pub fn loadAtlas(
+            self: *Self,
+            name: []const u8,
+            json_path: [:0]const u8,
+            texture_path: [:0]const u8,
+        ) !void {
+            var atlas = SpriteAtlas.init(self.allocator);
+            errdefer atlas.deinit();
 
-        const name_owned = try self.allocator.dupe(u8, name);
-        try self.atlases.put(name_owned, atlas);
-    }
+            try atlas.loadFromFile(json_path, texture_path);
 
-    /// Get an atlas by name
-    pub fn getAtlas(self: *TextureManager, name: []const u8) ?*SpriteAtlas {
-        return self.atlases.getPtr(name);
-    }
+            const name_owned = try self.allocator.dupe(u8, name);
+            try self.atlases.put(name_owned, atlas);
+        }
 
-    /// Find sprite data from any loaded atlas
-    /// Searches all atlases for the sprite name
-    pub fn findSprite(self: *TextureManager, sprite_name: []const u8) ?struct {
-        atlas: *SpriteAtlas,
-        sprite: SpriteData,
-        rect: rl.Rectangle,
-    } {
-        var iter = self.atlases.iterator();
-        while (iter.next()) |entry| {
-            if (entry.value_ptr.getSprite(sprite_name)) |sprite| {
-                return .{
-                    .atlas = entry.value_ptr,
-                    .sprite = sprite,
-                    .rect = rl.Rectangle{
-                        .x = @floatFromInt(sprite.x),
-                        .y = @floatFromInt(sprite.y),
-                        .width = @floatFromInt(sprite.width),
-                        .height = @floatFromInt(sprite.height),
-                    },
-                };
+        /// Get an atlas by name
+        pub fn getAtlas(self: *Self, name: []const u8) ?*SpriteAtlas {
+            return self.atlases.getPtr(name);
+        }
+
+        /// Find sprite data from any loaded atlas
+        /// Searches all atlases for the sprite name
+        pub fn findSprite(self: *Self, sprite_name: []const u8) ?struct {
+            atlas: *SpriteAtlas,
+            sprite: SpriteData,
+            rect: BackendType.Rectangle,
+        } {
+            var iter = self.atlases.iterator();
+            while (iter.next()) |entry| {
+                if (entry.value_ptr.getSprite(sprite_name)) |sprite| {
+                    return .{
+                        .atlas = entry.value_ptr,
+                        .sprite = sprite,
+                        .rect = BackendType.rectangle(
+                            @floatFromInt(sprite.x),
+                            @floatFromInt(sprite.y),
+                            @floatFromInt(sprite.width),
+                            @floatFromInt(sprite.height),
+                        ),
+                    };
+                }
+            }
+            return null;
+        }
+
+        /// Unload a specific atlas
+        pub fn unloadAtlas(self: *Self, name: []const u8) void {
+            if (self.atlases.fetchRemove(name)) |entry| {
+                var atlas = entry.value;
+                atlas.deinit();
+                self.allocator.free(entry.key);
             }
         }
-        return null;
-    }
 
-    /// Unload a specific atlas
-    pub fn unloadAtlas(self: *TextureManager, name: []const u8) void {
-        if (self.atlases.fetchRemove(name)) |entry| {
-            var atlas = entry.value;
-            atlas.deinit();
-            self.allocator.free(entry.key);
+        /// Get total number of sprites across all atlases
+        pub fn totalSpriteCount(self: *Self) usize {
+            var total: usize = 0;
+            var iter = self.atlases.iterator();
+            while (iter.next()) |entry| {
+                total += entry.value_ptr.count();
+            }
+            return total;
         }
-    }
 
-    /// Get total number of sprites across all atlases
-    pub fn totalSpriteCount(self: *TextureManager) usize {
-        var total: usize = 0;
-        var iter = self.atlases.iterator();
-        while (iter.next()) |entry| {
-            total += entry.value_ptr.count();
+        /// Get number of loaded atlases
+        pub fn atlasCount(self: *Self) usize {
+            return self.atlases.count();
         }
-        return total;
-    }
+    };
+}
 
-    /// Get number of loaded atlases
-    pub fn atlasCount(self: *TextureManager) usize {
-        return self.atlases.count();
-    }
-};
+/// Default texture manager using raylib backend (backwards compatible)
+pub const DefaultBackend = backend_mod.Backend(raylib_backend.RaylibBackend);
+pub const TextureManager = TextureManagerWith(DefaultBackend);

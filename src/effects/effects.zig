@@ -1,9 +1,12 @@
 //! Visual effects
 
-const rl = @import("raylib");
 const ecs = @import("ecs");
+const backend_mod = @import("../backend/backend.zig");
+const raylib_backend = @import("../backend/raylib_backend.zig");
 const components = @import("../components/components.zig");
-const Render = components.Render;
+
+/// Default backend for backwards compatibility
+pub const DefaultBackend = backend_mod.Backend(raylib_backend.RaylibBackend);
 
 /// Fade effect component
 pub const Fade = struct {
@@ -27,11 +30,30 @@ pub const TemporalFade = struct {
     min_alpha: f32 = 0.3,
 };
 
-/// Update fade effects
-pub fn fadeUpdateSystem(
+/// Flash effect with custom backend support
+pub fn FlashWith(comptime BackendType: type) type {
+    return struct {
+        /// Flash duration
+        duration: f32 = 0.1,
+        /// Time remaining
+        remaining: f32 = 0.1,
+        /// Flash color
+        color: BackendType.Color = BackendType.white,
+        /// Original tint to restore
+        original_tint: BackendType.Color = BackendType.white,
+    };
+}
+
+/// Flash effect (quick alpha pulse) - default raylib backend
+pub const Flash = FlashWith(DefaultBackend);
+
+/// Update fade effects (generic version)
+pub fn fadeUpdateSystemWith(
+    comptime BackendType: type,
     registry: *ecs.Registry,
     dt: f32,
 ) void {
+    const Render = components.RenderWith(BackendType);
     var view = registry.view(.{ Fade, Render }, .{});
     var iter = @TypeOf(view).Iterator.init(&view);
 
@@ -56,11 +78,21 @@ pub fn fadeUpdateSystem(
     }
 }
 
-/// Update temporal fade based on game time
-pub fn temporalFadeSystem(
+/// Update fade effects (default backend)
+pub fn fadeUpdateSystem(
+    registry: *ecs.Registry,
+    dt: f32,
+) void {
+    fadeUpdateSystemWith(DefaultBackend, registry, dt);
+}
+
+/// Update temporal fade based on game time (generic version)
+pub fn temporalFadeSystemWith(
+    comptime BackendType: type,
     registry: *ecs.Registry,
     current_hour: f32,
 ) void {
+    const Render = components.RenderWith(BackendType);
     var view = registry.view(.{ TemporalFade, Render }, .{});
     var iter = @TypeOf(view).Iterator.init(&view);
 
@@ -85,28 +117,27 @@ pub fn temporalFadeSystem(
     }
 }
 
-/// Flash effect (quick alpha pulse)
-pub const Flash = struct {
-    /// Flash duration
-    duration: f32 = 0.1,
-    /// Time remaining
-    remaining: f32 = 0.1,
-    /// Flash color
-    color: rl.Color = rl.Color.white,
-    /// Original tint to restore
-    original_tint: rl.Color = rl.Color.white,
-};
+/// Update temporal fade based on game time (default backend)
+pub fn temporalFadeSystem(
+    registry: *ecs.Registry,
+    current_hour: f32,
+) void {
+    temporalFadeSystemWith(DefaultBackend, registry, current_hour);
+}
 
-/// Update flash effects
-pub fn flashUpdateSystem(
+/// Update flash effects (generic version)
+pub fn flashUpdateSystemWith(
+    comptime BackendType: type,
     registry: *ecs.Registry,
     dt: f32,
 ) void {
-    var view = registry.view(.{ Flash, Render }, .{});
+    const Render = components.RenderWith(BackendType);
+    const FlashType = FlashWith(BackendType);
+    var view = registry.view(.{ FlashType, Render }, .{});
     var iter = @TypeOf(view).Iterator.init(&view);
 
     while (iter.next()) |entity| {
-        var flash = view.get(Flash, entity);
+        var flash = view.get(FlashType, entity);
         var render = view.get(Render, entity);
 
         flash.remaining -= dt;
@@ -114,10 +145,18 @@ pub fn flashUpdateSystem(
         if (flash.remaining <= 0) {
             // Restore original tint and remove flash component
             render.tint = flash.original_tint;
-            registry.remove(Flash, entity);
+            registry.remove(FlashType, entity);
         } else {
             // Apply flash color
             render.tint = flash.color;
         }
     }
+}
+
+/// Update flash effects (default backend)
+pub fn flashUpdateSystem(
+    registry: *ecs.Registry,
+    dt: f32,
+) void {
+    flashUpdateSystemWith(DefaultBackend, registry, dt);
 }

@@ -31,18 +31,18 @@
 //! ```
 
 const std = @import("std");
-const rl = @import("raylib");
 const ecs = @import("ecs");
+
+const backend_mod = @import("../backend/backend.zig");
+const raylib_backend = @import("../backend/raylib_backend.zig");
 
 const components = @import("../components/components.zig");
 const Position = components.Position;
-const Sprite = components.Sprite;
 
 const renderer_mod = @import("../renderer/renderer.zig");
-const Renderer = renderer_mod.Renderer;
 const ZIndex = renderer_mod.ZIndex;
 
-const Camera = @import("../camera/camera.zig").Camera;
+const camera_mod = @import("../camera/camera.zig");
 const effects = @import("../effects/effects.zig");
 
 /// Atlas configuration for loading sprite sheets
@@ -73,271 +73,284 @@ pub const EngineConfig = struct {
     camera: CameraConfig = .{},
 };
 
-/// High-level engine for simplified rendering
-pub const Engine = struct {
-    renderer: Renderer,
-    registry: *ecs.Registry,
-    allocator: std.mem.Allocator,
-    game_hour: f32 = 12.0,
+/// High-level engine with custom backend support
+pub fn EngineWith(comptime BackendType: type) type {
+    const Renderer = renderer_mod.RendererWith(BackendType);
+    const Camera = camera_mod.CameraWith(BackendType);
+    const Sprite = components.SpriteWith(BackendType);
 
-    /// Temporary buffer for sprite name generation
-    sprite_name_buffer: [256]u8 = undefined,
+    return struct {
+        const Self = @This();
+        pub const Backend = BackendType;
 
-    pub fn init(
-        allocator: std.mem.Allocator,
+        renderer: Renderer,
         registry: *ecs.Registry,
-        config: EngineConfig,
-    ) !Engine {
-        var engine = Engine{
-            .renderer = Renderer.init(allocator),
-            .registry = registry,
-            .allocator = allocator,
+        allocator: std.mem.Allocator,
+        game_hour: f32 = 12.0,
+
+        /// Temporary buffer for sprite name generation
+        sprite_name_buffer: [256]u8 = undefined,
+
+        pub fn init(
+            allocator: std.mem.Allocator,
+            registry: *ecs.Registry,
+            config: EngineConfig,
+        ) !Self {
+            var engine = Self{
+                .renderer = Renderer.init(allocator),
+                .registry = registry,
+                .allocator = allocator,
+            };
+
+            // Configure camera
+            engine.renderer.camera.x = config.camera.initial_x;
+            engine.renderer.camera.y = config.camera.initial_y;
+            engine.renderer.camera.zoom = config.camera.initial_zoom;
+
+            if (config.camera.bounds) |bounds| {
+                engine.renderer.camera.setBounds(
+                    bounds.min_x,
+                    bounds.min_y,
+                    bounds.max_x,
+                    bounds.max_y,
+                );
+            }
+
+            // Load atlases
+            for (config.atlases) |atlas| {
+                try engine.renderer.loadAtlas(atlas.name, atlas.json, atlas.texture);
+            }
+
+            return engine;
+        }
+
+        pub fn deinit(self: *Self) void {
+            self.renderer.deinit();
+        }
+
+        /// Set the current game hour for temporal effects (0.0 - 24.0)
+        pub fn setGameHour(self: *Self, hour: f32) void {
+            self.game_hour = hour;
+        }
+
+        /// Get direct access to the camera
+        pub fn getCamera(self: *Self) *Camera {
+            return &self.renderer.camera;
+        }
+
+        /// Get direct access to the renderer
+        pub fn getRenderer(self: *Self) *Renderer {
+            return &self.renderer;
+        }
+
+        /// Render all entities
+        /// Runs animation updates, effect updates, and sprite rendering
+        pub fn render(self: *Self, dt: f32) void {
+            // Update effects
+            effects.fadeUpdateSystemWith(BackendType, self.registry, dt);
+            effects.temporalFadeSystemWith(BackendType, self.registry, self.game_hour);
+            effects.flashUpdateSystemWith(BackendType, self.registry, dt);
+
+            // Begin camera mode
+            self.renderer.beginCameraMode();
+
+            // Render static sprites and animations sorted by z_index
+            self.renderEntities(dt);
+
+            // End camera mode
+            self.renderer.endCameraMode();
+        }
+
+        /// Internal: Render all entities sorted by z_index
+        fn renderEntities(self: *Self, dt: f32) void {
+            // Collect all renderable items
+            var items: std.ArrayList(RenderItem) = .empty;
+            defer items.deinit(self.allocator);
+
+            // Collect static sprites
+            var sprite_view = self.registry.view(.{ Position, Sprite }, .{});
+            var sprite_iter = @TypeOf(sprite_view).Iterator.init(&sprite_view);
+            while (sprite_iter.next()) |entity| {
+                const pos = sprite_view.getConst(Position, entity);
+                const sprite = sprite_view.getConst(Sprite, entity);
+                items.append(self.allocator, .{
+                    .x = pos.x,
+                    .y = pos.y,
+                    .z_index = sprite.z_index,
+                    .kind = .{ .sprite = sprite },
+                }) catch continue;
+            }
+
+            // Sort by z_index
+            std.mem.sort(RenderItem, items.items, {}, struct {
+                fn lessThan(_: void, a: RenderItem, b: RenderItem) bool {
+                    return a.z_index < b.z_index;
+                }
+            }.lessThan);
+
+            // Render in order
+            for (items.items) |item| {
+                switch (item.kind) {
+                    .sprite => |sprite| {
+                        self.renderer.drawSprite(
+                            sprite.name,
+                            item.x,
+                            item.y,
+                            .{
+                                .offset_x = sprite.offset_x,
+                                .offset_y = sprite.offset_y,
+                                .scale = sprite.scale,
+                                .rotation = sprite.rotation,
+                                .tint = sprite.tint,
+                                .flip_x = sprite.flip_x,
+                                .flip_y = sprite.flip_y,
+                            },
+                        );
+                    },
+                    .animation => |anim_data| {
+                        self.renderer.drawSprite(
+                            anim_data.sprite_name,
+                            item.x,
+                            item.y,
+                            .{
+                                .offset_x = anim_data.offset_x,
+                                .offset_y = anim_data.offset_y,
+                                .scale = anim_data.scale,
+                                .rotation = anim_data.rotation,
+                                .tint = anim_data.tint,
+                                .flip_x = anim_data.flip_x,
+                                .flip_y = anim_data.flip_y,
+                            },
+                        );
+                    },
+                }
+            }
+
+            _ = dt;
+        }
+
+        const RenderItem = struct {
+            x: f32,
+            y: f32,
+            z_index: u8,
+            kind: union(enum) {
+                sprite: Sprite,
+                animation: AnimationRenderData,
+            },
         };
 
-        // Configure camera
-        engine.renderer.camera.x = config.camera.initial_x;
-        engine.renderer.camera.y = config.camera.initial_y;
-        engine.renderer.camera.zoom = config.camera.initial_zoom;
+        const AnimationRenderData = struct {
+            sprite_name: []const u8,
+            offset_x: f32,
+            offset_y: f32,
+            scale: f32,
+            rotation: f32,
+            tint: BackendType.Color,
+            flip_x: bool,
+            flip_y: bool,
+        };
 
-        if (config.camera.bounds) |bounds| {
-            engine.renderer.camera.setBounds(
-                bounds.min_x,
-                bounds.min_y,
-                bounds.max_x,
-                bounds.max_y,
-            );
-        }
+        /// Register an animation type for rendering
+        /// Call this for each animation enum type you want to render
+        pub fn renderAnimations(
+            self: *Self,
+            comptime AnimationType: type,
+            comptime prefix: []const u8,
+            dt: f32,
+        ) void {
+            const AnimComp = components.AnimationWith(AnimationType, BackendType);
 
-        // Load atlases
-        for (config.atlases) |atlas| {
-            try engine.renderer.loadAtlas(atlas.name, atlas.json, atlas.texture);
-        }
+            var view = self.registry.view(.{ Position, AnimComp }, .{});
+            var iter = @TypeOf(view).Iterator.init(&view);
 
-        return engine;
-    }
+            while (iter.next()) |entity| {
+                var anim = view.get(AnimComp, entity);
+                const pos = view.getConst(Position, entity);
 
-    pub fn deinit(self: *Engine) void {
-        self.renderer.deinit();
-    }
+                // Update animation
+                anim.update(dt);
 
-    /// Set the current game hour for temporal effects (0.0 - 24.0)
-    pub fn setGameHour(self: *Engine, hour: f32) void {
-        self.game_hour = hour;
-    }
+                // Get sprite name
+                const sprite_name = anim.getSpriteName(prefix, &self.sprite_name_buffer);
 
-    /// Get direct access to the camera
-    pub fn getCamera(self: *Engine) *Camera {
-        return &self.renderer.camera;
-    }
-
-    /// Get direct access to the renderer
-    pub fn getRenderer(self: *Engine) *Renderer {
-        return &self.renderer;
-    }
-
-    /// Render all entities
-    /// Runs animation updates, effect updates, and sprite rendering
-    pub fn render(self: *Engine, dt: f32) void {
-        // Update effects
-        effects.fadeUpdateSystem(self.registry, dt);
-        effects.temporalFadeSystem(self.registry, self.game_hour);
-        effects.flashUpdateSystem(self.registry, dt);
-
-        // Begin camera mode
-        self.renderer.beginCameraMode();
-
-        // Render static sprites and animations sorted by z_index
-        self.renderEntities(dt);
-
-        // End camera mode
-        self.renderer.endCameraMode();
-    }
-
-    /// Internal: Render all entities sorted by z_index
-    fn renderEntities(self: *Engine, dt: f32) void {
-        // Collect all renderable items
-        var items: std.ArrayList(RenderItem) = .empty;
-        defer items.deinit(self.allocator);
-
-        // Collect static sprites
-        var sprite_view = self.registry.view(.{ Position, Sprite }, .{});
-        var sprite_iter = @TypeOf(sprite_view).Iterator.init(&sprite_view);
-        while (sprite_iter.next()) |entity| {
-            const pos = sprite_view.getConst(Position, entity);
-            const sprite = sprite_view.getConst(Sprite, entity);
-            items.append(self.allocator, .{
-                .x = pos.x,
-                .y = pos.y,
-                .z_index = sprite.z_index,
-                .kind = .{ .sprite = sprite },
-            }) catch continue;
-        }
-
-        // Sort by z_index
-        std.mem.sort(RenderItem, items.items, {}, struct {
-            fn lessThan(_: void, a: RenderItem, b: RenderItem) bool {
-                return a.z_index < b.z_index;
-            }
-        }.lessThan);
-
-        // Render in order
-        for (items.items) |item| {
-            switch (item.kind) {
-                .sprite => |sprite| {
-                    self.renderer.drawSprite(
-                        sprite.name,
-                        item.x,
-                        item.y,
-                        .{
-                            .offset_x = sprite.offset_x,
-                            .offset_y = sprite.offset_y,
-                            .scale = sprite.scale,
-                            .rotation = sprite.rotation,
-                            .tint = sprite.tint,
-                            .flip_x = sprite.flip_x,
-                            .flip_y = sprite.flip_y,
-                        },
-                    );
-                },
-                .animation => |anim_data| {
-                    self.renderer.drawSprite(
-                        anim_data.sprite_name,
-                        item.x,
-                        item.y,
-                        .{
-                            .offset_x = anim_data.offset_x,
-                            .offset_y = anim_data.offset_y,
-                            .scale = anim_data.scale,
-                            .rotation = anim_data.rotation,
-                            .tint = anim_data.tint,
-                            .flip_x = anim_data.flip_x,
-                            .flip_y = anim_data.flip_y,
-                        },
-                    );
-                },
+                // Draw
+                self.renderer.drawSprite(
+                    sprite_name,
+                    pos.x,
+                    pos.y,
+                    .{
+                        .offset_x = anim.offset_x,
+                        .offset_y = anim.offset_y,
+                        .scale = anim.scale,
+                        .rotation = anim.rotation,
+                        .tint = anim.tint,
+                        .flip_x = anim.flip_x,
+                        .flip_y = anim.flip_y,
+                    },
+                );
             }
         }
 
-        _ = dt;
-    }
+        /// Render animations with a custom sprite name formatter.
+        /// Use this when your sprite atlas uses a different naming convention.
+        ///
+        /// The formatter function receives:
+        /// - anim_name: The animation type name (e.g., "walk", "idle")
+        /// - frame: The 1-based frame number
+        /// - buffer: A buffer to write the result into
+        ///
+        /// Example usage for "{anim}/{character}_{frame}.png" format:
+        /// ```zig
+        /// engine.renderAnimationsCustom(PlayerAnim, dt, struct {
+        ///     pub fn format(anim_name: []const u8, frame: u32, buf: []u8) []const u8 {
+        ///         return std.fmt.bufPrint(buf, "{s}/m_bald_{d:0>4}.png", .{
+        ///             anim_name,
+        ///             frame,
+        ///         }) catch return "";
+        ///     }
+        /// }.format);
+        /// ```
+        pub fn renderAnimationsCustom(
+            self: *Self,
+            comptime AnimationType: type,
+            dt: f32,
+            formatter: *const fn (anim_name: []const u8, frame: u32, buf: []u8) []const u8,
+        ) void {
+            const AnimComp = components.AnimationWith(AnimationType, BackendType);
 
-    const RenderItem = struct {
-        x: f32,
-        y: f32,
-        z_index: u8,
-        kind: union(enum) {
-            sprite: Sprite,
-            animation: AnimationRenderData,
-        },
-    };
+            var view = self.registry.view(.{ Position, AnimComp }, .{});
+            var iter = @TypeOf(view).Iterator.init(&view);
 
-    const AnimationRenderData = struct {
-        sprite_name: []const u8,
-        offset_x: f32,
-        offset_y: f32,
-        scale: f32,
-        rotation: f32,
-        tint: rl.Color,
-        flip_x: bool,
-        flip_y: bool,
-    };
+            while (iter.next()) |entity| {
+                var anim = view.get(AnimComp, entity);
+                const pos = view.getConst(Position, entity);
 
-    /// Register an animation type for rendering
-    /// Call this for each animation enum type you want to render
-    pub fn renderAnimations(
-        self: *Engine,
-        comptime AnimationType: type,
-        comptime prefix: []const u8,
-        dt: f32,
-    ) void {
-        const AnimComp = components.Animation(AnimationType);
+                // Update animation
+                anim.update(dt);
 
-        var view = self.registry.view(.{ Position, AnimComp }, .{});
-        var iter = @TypeOf(view).Iterator.init(&view);
+                // Get sprite name using custom formatter
+                const sprite_name = anim.getSpriteNameCustom(&self.sprite_name_buffer, formatter);
 
-        while (iter.next()) |entity| {
-            var anim = view.get(AnimComp, entity);
-            const pos = view.getConst(Position, entity);
-
-            // Update animation
-            anim.update(dt);
-
-            // Get sprite name
-            const sprite_name = anim.getSpriteName(prefix, &self.sprite_name_buffer);
-
-            // Draw
-            self.renderer.drawSprite(
-                sprite_name,
-                pos.x,
-                pos.y,
-                .{
-                    .offset_x = anim.offset_x,
-                    .offset_y = anim.offset_y,
-                    .scale = anim.scale,
-                    .rotation = anim.rotation,
-                    .tint = anim.tint,
-                    .flip_x = anim.flip_x,
-                    .flip_y = anim.flip_y,
-                },
-            );
+                // Draw
+                self.renderer.drawSprite(
+                    sprite_name,
+                    pos.x,
+                    pos.y,
+                    .{
+                        .offset_x = anim.offset_x,
+                        .offset_y = anim.offset_y,
+                        .scale = anim.scale,
+                        .rotation = anim.rotation,
+                        .tint = anim.tint,
+                        .flip_x = anim.flip_x,
+                        .flip_y = anim.flip_y,
+                    },
+                );
+            }
         }
-    }
+    };
+}
 
-    /// Render animations with a custom sprite name formatter.
-    /// Use this when your sprite atlas uses a different naming convention.
-    ///
-    /// The formatter function receives:
-    /// - anim_name: The animation type name (e.g., "walk", "idle")
-    /// - frame: The 1-based frame number
-    /// - buffer: A buffer to write the result into
-    ///
-    /// Example usage for "{anim}/{character}_{frame}.png" format:
-    /// ```zig
-    /// engine.renderAnimationsCustom(PlayerAnim, dt, struct {
-    ///     pub fn format(anim_name: []const u8, frame: u32, buf: []u8) []const u8 {
-    ///         return std.fmt.bufPrint(buf, "{s}/m_bald_{d:0>4}.png", .{
-    ///             anim_name,
-    ///             frame,
-    ///         }) catch return "";
-    ///     }
-    /// }.format);
-    /// ```
-    pub fn renderAnimationsCustom(
-        self: *Engine,
-        comptime AnimationType: type,
-        dt: f32,
-        formatter: *const fn (anim_name: []const u8, frame: u32, buf: []u8) []const u8,
-    ) void {
-        const AnimComp = components.Animation(AnimationType);
-
-        var view = self.registry.view(.{ Position, AnimComp }, .{});
-        var iter = @TypeOf(view).Iterator.init(&view);
-
-        while (iter.next()) |entity| {
-            var anim = view.get(AnimComp, entity);
-            const pos = view.getConst(Position, entity);
-
-            // Update animation
-            anim.update(dt);
-
-            // Get sprite name using custom formatter
-            const sprite_name = anim.getSpriteNameCustom(&self.sprite_name_buffer, formatter);
-
-            // Draw
-            self.renderer.drawSprite(
-                sprite_name,
-                pos.x,
-                pos.y,
-                .{
-                    .offset_x = anim.offset_x,
-                    .offset_y = anim.offset_y,
-                    .scale = anim.scale,
-                    .rotation = anim.rotation,
-                    .tint = anim.tint,
-                    .flip_x = anim.flip_x,
-                    .flip_y = anim.flip_y,
-                },
-            );
-        }
-    }
-};
+/// Default engine using raylib backend (backwards compatible)
+pub const DefaultBackend = backend_mod.Backend(raylib_backend.RaylibBackend);
+pub const Engine = EngineWith(DefaultBackend);
