@@ -20,7 +20,7 @@ jobs:
         with:
           version: '0.15.2'
 
-      - name: Install raylib dependencies
+      - name: Install raylib and sokol dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -34,7 +34,8 @@ jobs:
             libxfixes-dev \
             libxrender-dev \
             libwayland-dev \
-            libxkbcommon-dev
+            libxkbcommon-dev \
+            libasound2-dev
 
       - name: Run tests
         run: |
