@@ -235,10 +235,6 @@ pub const SokolBackend = struct {
         // Save current matrix and apply camera transformation
         sgl.pushMatrix();
 
-        // Get screen dimensions
-        const screen_w = getScreenWidth();
-        const screen_h = getScreenHeight();
-
         // Apply camera offset (screen center)
         sgl.translate(camera.offset.x, camera.offset.y, 0);
 
@@ -252,9 +248,6 @@ pub const SokolBackend = struct {
 
         // Translate to camera target
         sgl.translate(-camera.target.x, -camera.target.y, 0);
-
-        _ = screen_w;
-        _ = screen_h;
     }
 
     /// End 2D camera mode
@@ -406,10 +399,22 @@ pub const SokolBackend = struct {
     }
 
     /// Clear background with color
-    pub fn clearBackground(col: Color) void {
-        // In sokol, clear color is set when beginning a pass
-        // This needs to be called before sg.beginPass
-        _ = col;
+    ///
+    /// NOTE: This is a no-op in the sokol backend. Unlike raylib, sokol handles
+    /// background clearing through the pass action when calling `sg.beginPass()`.
+    /// To set the clear color, configure `pass_action.colors[0]` before your
+    /// render pass:
+    ///
+    /// ```zig
+    /// var pass_action: sg.PassAction = .{};
+    /// pass_action.colors[0] = .{
+    ///     .load_action = .CLEAR,
+    ///     .clear_value = .{ .r = 0.2, .g = 0.2, .b = 0.3, .a = 1.0 },
+    /// };
+    /// sg.beginPass(.{ .action = pass_action, .swapchain = sokol.glue.swapchain() });
+    /// ```
+    pub fn clearBackground(_: Color) void {
+        // No-op: sokol clears via pass action, not a separate function call
     }
 
     // Input functions

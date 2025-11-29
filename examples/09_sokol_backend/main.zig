@@ -153,7 +153,8 @@ export fn frame() void {
 export fn cleanup() void {
     sgl.shutdown();
     sg.shutdown();
-    state.registry.deinit();
+    // Note: registry.deinit() is handled by defer in main() to ensure cleanup
+    // even if the app exits abnormally
     std.debug.print("Sokol backend cleanup complete.\n", .{});
 }
 
@@ -185,6 +186,7 @@ pub fn main() !void {
 
     // Initialize ECS registry
     var registry = ecs.Registry.init(allocator);
+    defer registry.deinit();
 
     // Store state for callbacks
     state = .{
