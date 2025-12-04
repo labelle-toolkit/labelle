@@ -101,7 +101,7 @@ zig build examples
 
 ## Testing
 
-Tests use zspec (BDD-style). Test files are in `src/tests/`:
+Tests use zspec (BDD-style). Test files are in `tests/`:
 
 ```zig
 pub const AnimationTests = struct {
