@@ -169,4 +169,4 @@ pub fn generateSpriteNameNoPrefix(
     return result;
 }
 
-// Tests moved to src/tests/animation_test.zig
+// Tests moved to tests/animation_test.zig

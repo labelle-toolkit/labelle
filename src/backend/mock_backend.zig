@@ -210,6 +210,67 @@ pub const MockBackend = struct {
     pub fn isTextureValid(texture: Texture) bool {
         return texture.id != 0;
     }
+
+    // Window management (no-op for testing)
+    pub fn initWindow(_: i32, _: i32, _: [*:0]const u8) void {}
+
+    pub fn closeWindow() void {}
+
+    pub fn windowShouldClose() bool {
+        return false;
+    }
+
+    pub fn setTargetFPS(_: i32) void {}
+
+    pub fn setConfigFlags(_: anytype) void {}
+
+    pub fn beginDrawing() void {}
+
+    pub fn endDrawing() void {}
+
+    pub fn clearBackground(_: Color) void {}
+
+    pub fn getFrameTime() f32 {
+        return 0.016; // ~60 FPS
+    }
+
+    pub fn takeScreenshot(_: [*:0]const u8) void {}
+
+    // Input (no-op for testing)
+    pub fn isKeyDown(_: anytype) bool {
+        return false;
+    }
+
+    pub fn isKeyPressed(_: anytype) bool {
+        return false;
+    }
+
+    pub fn isKeyReleased(_: anytype) bool {
+        return false;
+    }
+
+    pub fn isMouseButtonDown(_: anytype) bool {
+        return false;
+    }
+
+    pub fn isMouseButtonPressed(_: anytype) bool {
+        return false;
+    }
+
+    pub fn getMousePosition() Vector2 {
+        return .{ .x = 0, .y = 0 };
+    }
+
+    pub fn getMouseWheelMove() f32 {
+        return 0;
+    }
+
+    // Drawing (no-op for testing)
+    pub fn drawText(_: [*:0]const u8, _: i32, _: i32, _: i32, _: Color) void {}
+
+    pub fn drawRectangle(_: i32, _: i32, _: i32, _: i32, _: Color) void {}
+
+    pub fn drawRectangleLines(_: i32, _: i32, _: i32, _: i32, _: Color) void {}
 };
 
 // Tests for the mock backend itself
