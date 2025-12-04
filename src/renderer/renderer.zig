@@ -260,6 +260,12 @@ pub fn RendererWith(comptime BackendType: type) type {
             const found = self.texture_manager.findSprite(sprite_name) orelse return true; // Render if sprite not found (error handling)
             const sprite = found.sprite;
 
+            // Get viewport - if viewport is invalid (zero dimensions), render everything
+            const viewport = self.camera.getViewport();
+            if (viewport.width <= 0 or viewport.height <= 0) {
+                return true; // Viewport not yet initialized, render everything
+            }
+
             // Calculate actual sprite dimensions accounting for scale and rotation
             var width: f32 = undefined;
             var height: f32 = undefined;
@@ -288,8 +294,7 @@ pub fn RendererWith(comptime BackendType: type) type {
                 final_y += @as(f32, @floatFromInt(sprite.offset_y)) * options.scale;
             }
 
-            // Get viewport and check overlap
-            const viewport = self.camera.getViewport();
+            // Check overlap
             return viewport.overlapsRect(final_x, final_y, width, height);
         }
     };
