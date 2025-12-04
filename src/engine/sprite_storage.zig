@@ -1,9 +1,19 @@
 //! Sprite Storage
 //!
-//! Internal storage for sprites owned by the engine. This replaces the external
+//! Generic internal storage for sprites owned by the engine. This replaces the external
 //! ECS registry approach - the engine now owns all sprite data internally.
 //!
 //! Users interact with sprites via opaque SpriteId handles.
+//!
+//! The storage is generic over:
+//! - `DataType`: The sprite data struct (must have `generation: u32` and `active: bool` fields)
+//! - `max_sprites`: Maximum number of sprites
+//!
+//! Example usage:
+//! ```zig
+//! const MyStorage = GenericSpriteStorage(MySpriteData, 10000);
+//! var storage = try MyStorage.init(allocator);
+//! ```
 
 const std = @import("std");
 
@@ -48,7 +58,7 @@ pub const AnimationState = struct {
     paused: bool = false,
 };
 
-/// Internal sprite data
+/// Internal sprite data (default type for SpriteStorage)
 pub const SpriteData = struct {
     // Position
     x: f32 = 0,
@@ -78,10 +88,10 @@ pub const SpriteData = struct {
     // Reference to sprite sheet (index into engine's sheets array)
     sheet_index: u16 = 0,
 
-    // Generation for handle validation
+    // Generation for handle validation (required by GenericSpriteStorage)
     generation: u32 = 0,
 
-    // Whether this slot is occupied
+    // Whether this slot is occupied (required by GenericSpriteStorage)
     active: bool = false,
 };
 
@@ -101,12 +111,27 @@ pub const SpriteConfig = struct {
     offset_y: f32 = 0,
 };
 
-/// Internal sprite storage with generational indices
-pub fn SpriteStorage(comptime max_sprites: usize) type {
+/// Generic sprite storage with generational indices.
+/// The DataType must have:
+/// - `generation: u32` field for handle validation
+/// - `active: bool` field for tracking slot occupancy
+pub fn GenericSpriteStorage(comptime DataType: type, comptime max_sprites: usize) type {
+    // Validate DataType has required fields
+    comptime {
+        if (!@hasField(DataType, "generation")) {
+            @compileError("DataType must have a 'generation: u32' field");
+        }
+        if (!@hasField(DataType, "active")) {
+            @compileError("DataType must have an 'active: bool' field");
+        }
+    }
+
     return struct {
         const Self = @This();
+        pub const Data = DataType;
+        pub const capacity = max_sprites;
 
-        sprites: [max_sprites]SpriteData = [_]SpriteData{.{}} ** max_sprites,
+        sprites: [max_sprites]DataType = [_]DataType{.{}} ** max_sprites,
         free_list: std.ArrayList(u32),
         sprite_count: u32 = 0,
         allocator: std.mem.Allocator,
@@ -132,33 +157,18 @@ pub fn SpriteStorage(comptime max_sprites: usize) type {
             self.free_list.deinit(self.allocator);
         }
 
-        /// Add a new sprite, returns handle
-        pub fn add(self: *Self, config: SpriteConfig) !SpriteId {
+        /// Allocate a slot and return its index and new generation.
+        /// The caller is responsible for initializing the sprite data.
+        pub fn allocSlot(self: *Self) !struct { index: u32, generation: u32 } {
             const index = self.free_list.pop() orelse return error.OutOfSprites;
-
             const generation = self.sprites[index].generation +% 1;
-
-            self.sprites[index] = SpriteData{
-                .x = config.x,
-                .y = config.y,
-                .z_index = config.z_index,
-                .scale = config.scale,
-                .rotation = config.rotation,
-                .flip_x = config.flip_x,
-                .flip_y = config.flip_y,
-                .visible = config.visible,
-                .offset_x = config.offset_x,
-                .offset_y = config.offset_y,
-                .generation = generation,
-                .active = true,
-            };
-
             self.sprite_count += 1;
+            return .{ .index = index, .generation = generation };
+        }
 
-            return SpriteId{
-                .index = index,
-                .generation = generation,
-            };
+        /// Get raw access to a sprite slot by index (for initialization after allocSlot)
+        pub fn getSlot(self: *Self, index: u32) *DataType {
+            return &self.sprites[index];
         }
 
         /// Remove a sprite by handle
@@ -182,15 +192,142 @@ pub fn SpriteStorage(comptime max_sprites: usize) type {
         }
 
         /// Get sprite data (mutable)
-        pub fn get(self: *Self, id: SpriteId) ?*SpriteData {
+        pub fn get(self: *Self, id: SpriteId) ?*DataType {
             if (!self.isValid(id)) return null;
             return &self.sprites[id.index];
         }
 
         /// Get sprite data (const)
-        pub fn getConst(self: *const Self, id: SpriteId) ?*const SpriteData {
+        pub fn getConst(self: *const Self, id: SpriteId) ?*const DataType {
             if (!self.isValid(id)) return null;
             return &self.sprites[id.index];
+        }
+
+        /// Get number of active sprites
+        pub fn count(self: *const Self) u32 {
+            return self.sprite_count;
+        }
+
+        /// Iterator for active sprites
+        pub const Iterator = struct {
+            storage: *const Self,
+            index: u32 = 0,
+
+            pub fn next(self: *Iterator) ?struct { id: SpriteId, data: *const DataType } {
+                while (self.index < max_sprites) {
+                    const idx = self.index;
+                    self.index += 1;
+
+                    const sprite = &self.storage.sprites[idx];
+                    if (sprite.active) {
+                        return .{
+                            .id = SpriteId{ .index = idx, .generation = sprite.generation },
+                            .data = sprite,
+                        };
+                    }
+                }
+                return null;
+            }
+        };
+
+        /// Mutable iterator for active sprites
+        pub const MutableIterator = struct {
+            storage: *Self,
+            index: u32 = 0,
+
+            pub fn next(self: *MutableIterator) ?struct { id: SpriteId, data: *DataType } {
+                while (self.index < max_sprites) {
+                    const idx = self.index;
+                    self.index += 1;
+
+                    const sprite = &self.storage.sprites[idx];
+                    if (sprite.active) {
+                        return .{
+                            .id = SpriteId{ .index = idx, .generation = sprite.generation },
+                            .data = sprite,
+                        };
+                    }
+                }
+                return null;
+            }
+        };
+
+        /// Get iterator over active sprites (const)
+        pub fn iterator(self: *const Self) Iterator {
+            return Iterator{ .storage = self };
+        }
+
+        /// Get mutable iterator over active sprites
+        pub fn mutableIterator(self: *Self) MutableIterator {
+            return MutableIterator{ .storage = self };
+        }
+    };
+}
+
+/// Internal sprite storage with generational indices (uses default SpriteData type)
+/// This is a convenience wrapper for backwards compatibility.
+pub fn SpriteStorage(comptime max_sprites: usize) type {
+    const Storage = GenericSpriteStorage(SpriteData, max_sprites);
+
+    return struct {
+        const Self = @This();
+        pub const Data = SpriteData;
+
+        inner: Storage,
+
+        pub fn init(allocator: std.mem.Allocator) !Self {
+            return Self{
+                .inner = try Storage.init(allocator),
+            };
+        }
+
+        pub fn deinit(self: *Self) void {
+            self.inner.deinit();
+        }
+
+        /// Add a new sprite, returns handle
+        pub fn add(self: *Self, config: SpriteConfig) !SpriteId {
+            const slot = try self.inner.allocSlot();
+
+            self.inner.sprites[slot.index] = SpriteData{
+                .x = config.x,
+                .y = config.y,
+                .z_index = config.z_index,
+                .scale = config.scale,
+                .rotation = config.rotation,
+                .flip_x = config.flip_x,
+                .flip_y = config.flip_y,
+                .visible = config.visible,
+                .offset_x = config.offset_x,
+                .offset_y = config.offset_y,
+                .generation = slot.generation,
+                .active = true,
+            };
+
+            return SpriteId{
+                .index = slot.index,
+                .generation = slot.generation,
+            };
+        }
+
+        /// Remove a sprite by handle
+        pub fn remove(self: *Self, id: SpriteId) bool {
+            return self.inner.remove(id);
+        }
+
+        /// Check if a sprite handle is valid
+        pub fn isValid(self: *const Self, id: SpriteId) bool {
+            return self.inner.isValid(id);
+        }
+
+        /// Get sprite data (mutable)
+        pub fn get(self: *Self, id: SpriteId) ?*SpriteData {
+            return self.inner.get(id);
+        }
+
+        /// Get sprite data (const)
+        pub fn getConst(self: *const Self, id: SpriteId) ?*const SpriteData {
+            return self.inner.getConst(id);
         }
 
         /// Set position
@@ -271,34 +408,15 @@ pub fn SpriteStorage(comptime max_sprites: usize) type {
 
         /// Get number of active sprites
         pub fn count(self: *const Self) u32 {
-            return self.sprite_count;
+            return self.inner.count();
         }
 
         /// Iterator for active sprites
-        pub const Iterator = struct {
-            storage: *const Self,
-            index: u32 = 0,
-
-            pub fn next(self: *Iterator) ?struct { id: SpriteId, data: *const SpriteData } {
-                while (self.index < max_sprites) {
-                    const idx = self.index;
-                    self.index += 1;
-
-                    const sprite = &self.storage.sprites[idx];
-                    if (sprite.active) {
-                        return .{
-                            .id = SpriteId{ .index = idx, .generation = sprite.generation },
-                            .data = sprite,
-                        };
-                    }
-                }
-                return null;
-            }
-        };
+        pub const Iterator = Storage.Iterator;
 
         /// Get iterator over active sprites
         pub fn iterator(self: *const Self) Iterator {
-            return Iterator{ .storage = self };
+            return self.inner.iterator();
         }
     };
 }
