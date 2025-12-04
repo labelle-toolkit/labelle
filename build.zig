@@ -4,6 +4,9 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // Build options
+    const convert_atlases = b.option(bool, "convert-atlases", "Convert TexturePacker JSON files to .zon format") orelse false;
+
     // Dependencies
     const zig_utils_dep = b.dependency("zig_utils", .{});
     const zig_utils = zig_utils_dep.module("zig_utils");
@@ -127,6 +130,44 @@ pub fn build(b: *std.Build) void {
 
         const full_run_step = b.step("run-09_sokol_backend", "Sokol backend example");
         full_run_step.dependOn(&run_cmd.step);
+    }
+
+    // Converter tool
+    const converter_exe = b.addExecutable(.{
+        .name = "labelle-convert",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/tools/converter.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+
+    b.installArtifact(converter_exe);
+
+    const converter_run = b.addRunArtifact(converter_exe);
+    if (b.args) |args| {
+        converter_run.addArgs(args);
+    }
+    const converter_step = b.step("converter", "Run the TexturePacker JSON to .zon converter");
+    converter_step.dependOn(&converter_run.step);
+
+    // Convert atlases option - converts all fixture JSON files to .zon
+    if (convert_atlases) {
+        const fixture_atlases = [_]struct { json: []const u8, zon: []const u8 }{
+            .{ .json = "fixtures/output/characters.json", .zon = "fixtures/output/characters_frames.zon" },
+            .{ .json = "fixtures/output/items.json", .zon = "fixtures/output/items_frames.zon" },
+            .{ .json = "fixtures/output/tiles.json", .zon = "fixtures/output/tiles_frames.zon" },
+        };
+
+        for (fixture_atlases) |atlas| {
+            const convert_cmd = b.addRunArtifact(converter_exe);
+            convert_cmd.addArg(atlas.json);
+            convert_cmd.addArg("-o");
+            convert_cmd.addArg(atlas.zon);
+
+            // Make the library depend on conversion
+            lib.step.dependOn(&convert_cmd.step);
+        }
     }
 
     // Tests with zspec
