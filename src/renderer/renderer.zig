@@ -232,6 +232,12 @@ pub fn RendererWith(comptime BackendType: type) type {
         /// and reduce draw calls. If the sprite is not found in the texture manager,
         /// returns true to ensure error visibility.
         /// 
+        /// **Note:** The culling is conservative and doesn't account for sprite rotation
+        /// or camera rotation. This means:
+        /// - Rotated sprites may be culled even if a corner is visible (rare edge case)
+        /// - Camera rotation (rarely used in 2D) is not considered
+        /// - For most 2D games, this provides excellent performance with no visual artifacts
+        /// 
         /// Parameters:
         ///   - sprite_name: Name of the sprite to check
         ///   - x, y: World position of sprite center
