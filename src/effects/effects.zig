@@ -71,9 +71,9 @@ pub fn FlashWith(comptime BackendType: type) type {
         duration: f32 = 0.1,
         /// Time remaining
         remaining: f32 = 0.1,
-        /// Flash color
+        /// Flash color (displayed while flashing)
         color: BackendType.Color = BackendType.white,
-        /// Original tint to restore
+        /// Original tint to restore after flash completes
         original_tint: BackendType.Color = BackendType.white,
 
         const Self = @This();
@@ -86,6 +86,15 @@ pub fn FlashWith(comptime BackendType: type) type {
         /// Check if the flash is complete
         pub fn isComplete(self: *const Self) bool {
             return self.remaining <= 0;
+        }
+
+        /// Get the current display color based on flash state
+        /// Returns flash color while active, original_tint when complete
+        pub fn getDisplayColor(self: *const Self) BackendType.Color {
+            if (self.remaining > 0) {
+                return self.color;
+            }
+            return self.original_tint;
         }
     };
 }
