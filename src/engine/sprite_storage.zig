@@ -132,6 +132,10 @@ pub const SpriteConfig = struct {
 /// The DataType must have:
 /// - `generation: u32` field for handle validation
 /// - `active: bool` field for tracking slot occupancy
+///
+/// Note: The sprite array is stack-allocated. Using a very high max_sprites value
+/// (e.g., 10000+) may cause stack overflow, especially on platforms with limited
+/// stack size. The default of 2000 sprites uses ~300KB which is safe for most cases.
 pub fn GenericSpriteStorage(comptime DataType: type, comptime max_sprites: usize) type {
     // Validate DataType has required fields
     comptime {
@@ -141,6 +145,16 @@ pub fn GenericSpriteStorage(comptime DataType: type, comptime max_sprites: usize
         if (!@hasField(DataType, "active")) {
             @compileError("DataType must have an 'active: bool' field");
         }
+    }
+
+    // Warn if sprite array exceeds 512KB (risk of stack overflow)
+    const array_size = @sizeOf(DataType) * max_sprites;
+    if (array_size > 512 * 1024) {
+        @compileError(std.fmt.comptimePrint(
+            "max_sprites={} with DataType size={} bytes results in {}KB array, " ++
+                "which may cause stack overflow. Reduce max_sprites to {} or less.",
+            .{ max_sprites, @sizeOf(DataType), array_size / 1024, (512 * 1024) / @sizeOf(DataType) },
+        ));
     }
 
     return struct {
