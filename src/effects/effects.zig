@@ -1,9 +1,10 @@
 //! Visual effects
+//!
+//! Effect types for visual effects like fade, temporal fade, and flash.
+//! These can be used with VisualEngine or your own rendering system.
 
-const ecs = @import("ecs");
 const backend_mod = @import("../backend/backend.zig");
 const raylib_backend = @import("../backend/raylib_backend.zig");
-const components = @import("../components/components.zig");
 
 /// Default backend for backwards compatibility
 pub const DefaultBackend = backend_mod.Backend(raylib_backend.RaylibBackend);
@@ -16,8 +17,27 @@ pub const Fade = struct {
     target_alpha: f32 = 1.0,
     /// Fade speed (alpha change per second)
     speed: f32 = 1.0,
-    /// Whether to remove entity when fully faded out
+    /// Whether this object should be removed when fully faded out
     remove_on_fadeout: bool = false,
+
+    /// Update the fade effect
+    pub fn update(self: *Fade, dt: f32) void {
+        if (self.alpha < self.target_alpha) {
+            self.alpha = @min(self.alpha + self.speed * dt, self.target_alpha);
+        } else if (self.alpha > self.target_alpha) {
+            self.alpha = @max(self.alpha - self.speed * dt, self.target_alpha);
+        }
+    }
+
+    /// Check if fade is complete (at target alpha)
+    pub fn isComplete(self: *const Fade) bool {
+        return @abs(self.alpha - self.target_alpha) < 0.01;
+    }
+
+    /// Check if should be removed (faded out completely)
+    pub fn shouldRemove(self: *const Fade) bool {
+        return self.remove_on_fadeout and self.alpha <= 0.01;
+    }
 };
 
 /// Temporal fade based on time of day (0.0 - 24.0 hours)
@@ -28,6 +48,20 @@ pub const TemporalFade = struct {
     fade_end_hour: f32 = 22.0,
     /// Minimum alpha at full fade
     min_alpha: f32 = 0.3,
+
+    /// Calculate the alpha value based on current hour
+    pub fn calculateAlpha(self: *const TemporalFade, current_hour: f32) f32 {
+        if (current_hour >= self.fade_start_hour and current_hour < self.fade_end_hour) {
+            // During fade period
+            const progress = (current_hour - self.fade_start_hour) /
+                (self.fade_end_hour - self.fade_start_hour);
+            return 1.0 - progress * (1.0 - self.min_alpha);
+        } else if (current_hour >= self.fade_end_hour) {
+            // Fully faded
+            return self.min_alpha;
+        }
+        return 1.0;
+    }
 };
 
 /// Flash effect with custom backend support
@@ -37,126 +71,33 @@ pub fn FlashWith(comptime BackendType: type) type {
         duration: f32 = 0.1,
         /// Time remaining
         remaining: f32 = 0.1,
-        /// Flash color
+        /// Flash color (displayed while flashing)
         color: BackendType.Color = BackendType.white,
-        /// Original tint to restore
+        /// Original tint to restore after flash completes
         original_tint: BackendType.Color = BackendType.white,
+
+        const Self = @This();
+
+        /// Update the flash effect
+        pub fn update(self: *Self, dt: f32) void {
+            self.remaining -= dt;
+        }
+
+        /// Check if the flash is complete
+        pub fn isComplete(self: *const Self) bool {
+            return self.remaining <= 0;
+        }
+
+        /// Get the current display color based on flash state
+        /// Returns flash color while active, original_tint when complete
+        pub fn getDisplayColor(self: *const Self) BackendType.Color {
+            if (self.remaining > 0) {
+                return self.color;
+            }
+            return self.original_tint;
+        }
     };
 }
 
 /// Flash effect (quick alpha pulse) - default raylib backend
 pub const Flash = FlashWith(DefaultBackend);
-
-/// Update fade effects (generic version)
-pub fn fadeUpdateSystemWith(
-    comptime BackendType: type,
-    registry: *ecs.Registry,
-    dt: f32,
-) void {
-    const Render = components.RenderWith(BackendType);
-    var view = registry.view(.{ Fade, Render }, .{});
-    var iter = @TypeOf(view).Iterator.init(&view);
-
-    while (iter.next()) |entity| {
-        var fade = view.get(Fade, entity);
-        var render = view.get(Render, entity);
-
-        // Move alpha toward target
-        if (fade.alpha < fade.target_alpha) {
-            fade.alpha = @min(fade.alpha + fade.speed * dt, fade.target_alpha);
-        } else if (fade.alpha > fade.target_alpha) {
-            fade.alpha = @max(fade.alpha - fade.speed * dt, fade.target_alpha);
-        }
-
-        // Apply alpha to render tint
-        render.tint.a = @intFromFloat(fade.alpha * 255.0);
-
-        // Check for removal
-        if (fade.remove_on_fadeout and fade.alpha <= 0.01) {
-            registry.destroy(entity);
-        }
-    }
-}
-
-/// Update fade effects (default backend)
-pub fn fadeUpdateSystem(
-    registry: *ecs.Registry,
-    dt: f32,
-) void {
-    fadeUpdateSystemWith(DefaultBackend, registry, dt);
-}
-
-/// Update temporal fade based on game time (generic version)
-pub fn temporalFadeSystemWith(
-    comptime BackendType: type,
-    registry: *ecs.Registry,
-    current_hour: f32,
-) void {
-    const Render = components.RenderWith(BackendType);
-    var view = registry.view(.{ TemporalFade, Render }, .{});
-    var iter = @TypeOf(view).Iterator.init(&view);
-
-    while (iter.next()) |entity| {
-        const temporal = view.getConst(TemporalFade, entity);
-        var render = view.get(Render, entity);
-
-        // Calculate fade factor based on time
-        var alpha: f32 = 1.0;
-
-        if (current_hour >= temporal.fade_start_hour and current_hour < temporal.fade_end_hour) {
-            // During fade period
-            const progress = (current_hour - temporal.fade_start_hour) /
-                (temporal.fade_end_hour - temporal.fade_start_hour);
-            alpha = 1.0 - progress * (1.0 - temporal.min_alpha);
-        } else if (current_hour >= temporal.fade_end_hour) {
-            // Fully faded
-            alpha = temporal.min_alpha;
-        }
-
-        render.tint.a = @intFromFloat(alpha * 255.0);
-    }
-}
-
-/// Update temporal fade based on game time (default backend)
-pub fn temporalFadeSystem(
-    registry: *ecs.Registry,
-    current_hour: f32,
-) void {
-    temporalFadeSystemWith(DefaultBackend, registry, current_hour);
-}
-
-/// Update flash effects (generic version)
-pub fn flashUpdateSystemWith(
-    comptime BackendType: type,
-    registry: *ecs.Registry,
-    dt: f32,
-) void {
-    const Render = components.RenderWith(BackendType);
-    const FlashType = FlashWith(BackendType);
-    var view = registry.view(.{ FlashType, Render }, .{});
-    var iter = @TypeOf(view).Iterator.init(&view);
-
-    while (iter.next()) |entity| {
-        var flash = view.get(FlashType, entity);
-        var render = view.get(Render, entity);
-
-        flash.remaining -= dt;
-
-        if (flash.remaining <= 0) {
-            // Restore original tint and remove flash component
-            render.tint = flash.original_tint;
-            registry.remove(FlashType, entity);
-        } else {
-            // Apply flash color
-            render.tint = flash.color;
-        }
-    }
-}
-
-/// Update flash effects (default backend)
-pub fn flashUpdateSystem(
-    registry: *ecs.Registry,
-    dt: f32,
-) void {
-    flashUpdateSystemWith(DefaultBackend, registry, dt);
-}

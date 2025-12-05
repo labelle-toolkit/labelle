@@ -1,13 +1,12 @@
-// ECS Systems tests
+// Systems tests
 //
-// Note: These tests focus on system logic that can be tested without
-// raylib rendering context. The spriteRenderSystem requires a Renderer
-// which needs raylib, so we test the animation and sorting logic instead.
+// Note: ECS systems have been removed from labelle.
+// These tests now focus on effect types and animation logic that can be
+// tested without an ECS registry.
 
 const std = @import("std");
 const zspec = @import("zspec");
 const gfx = @import("labelle");
-const ecs = @import("ecs");
 
 const expect = zspec.expect;
 
@@ -34,255 +33,202 @@ const TestAnim = enum {
 const TestAnimation = gfx.Animation(TestAnim);
 
 // ============================================================================
-// Animation System Tests
+// Animation Logic Tests
 // ============================================================================
 
-pub const AnimationSystemTests = struct {
-    test "animation updates through registry iteration" {
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        defer _ = gpa.deinit();
-        const allocator = gpa.allocator();
+pub const AnimationLogicTests = struct {
+    test "animation advances frames correctly" {
+        var anim = TestAnimation.init(.idle); // 4 frames, 0.2 duration
 
-        var registry = ecs.Registry.init(allocator);
-        defer registry.deinit();
+        // Frame 0 initially
+        try expect.equal(anim.frame, 0);
 
-        // Create entities with animations and position (need 2+ components for MultiView iterator)
-        const entity1 = registry.create();
-        registry.add(entity1, gfx.Position{ .x = 0, .y = 0 });
-        registry.add(entity1, TestAnimation.init(.idle));
+        // Update by 0.25 (should advance to frame 1)
+        anim.update(0.25);
+        try expect.equal(anim.frame, 1);
 
-        const entity2 = registry.create();
-        registry.add(entity2, gfx.Position{ .x = 0, .y = 0 });
-        registry.add(entity2, TestAnimation.init(.walk));
-
-        // Simulate animation update system
-        const dt: f32 = 0.25; // Enough to advance idle (0.2 duration) by one frame
-        var view = registry.view(.{ gfx.Position, TestAnimation }, .{});
-        var iter = @TypeOf(view).Iterator.init(&view);
-        while (iter.next()) |entity| {
-            var anim = view.get(TestAnimation, entity);
-            anim.update(dt);
-        }
-
-        // Check entity1 (idle) advanced one frame
-        const anim1 = registry.getConst(TestAnimation, entity1);
-        try expect.equal(anim1.frame, 1);
-
-        // Check entity2 (walk) advanced two frames (0.1 duration, 0.25 dt = 2 frames)
-        const anim2 = registry.getConst(TestAnimation, entity2);
-        try expect.equal(anim2.frame, 2);
+        // Update by 0.2 (should advance to frame 2)
+        anim.update(0.2);
+        try expect.equal(anim.frame, 2);
     }
 
     test "non-looping animation stops at last frame" {
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        defer _ = gpa.deinit();
-        const allocator = gpa.allocator();
-
-        var registry = ecs.Registry.init(allocator);
-        defer registry.deinit();
-
-        const entity = registry.create();
-        const jump_anim = TestAnimation.init(.jump); // 3 frames, 0.15 duration, non-looping
-        registry.add(entity, jump_anim);
+        var anim = TestAnimation.init(.jump); // 3 frames, 0.15 duration, non-looping
 
         // Update enough to reach the end
-        const dt: f32 = 0.5; // Should be enough to reach frame 3
-        var anim = registry.get(TestAnimation, entity);
-        anim.update(dt);
+        anim.update(0.5); // Should be enough to reach last frame
 
         try expect.equal(anim.frame, 2); // 0-indexed, so frame 2 is last
         try expect.toBeFalse(anim.playing);
     }
 
     test "looping animation wraps around" {
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        defer _ = gpa.deinit();
-        const allocator = gpa.allocator();
-
-        var registry = ecs.Registry.init(allocator);
-        defer registry.deinit();
-
-        const entity = registry.create();
-        var idle_anim = TestAnimation.init(.idle); // 4 frames, 0.2 duration, looping
-        idle_anim.frame = 3; // Set to last frame
-        idle_anim.elapsed_time = 0.19;
-        registry.add(entity, idle_anim);
+        var anim = TestAnimation.init(.idle); // 4 frames, 0.2 duration, looping
+        anim.frame = 3; // Set to last frame
+        anim.elapsed_time = 0.19;
 
         // Update to trigger wrap
-        var anim = registry.get(TestAnimation, entity);
         anim.update(0.02);
 
         try expect.equal(anim.frame, 0); // Wrapped back to start
         try expect.toBeTrue(anim.playing);
     }
+
+    test "play resets animation state" {
+        var anim = TestAnimation.init(.idle);
+        anim.frame = 2;
+        anim.elapsed_time = 0.5;
+        anim.playing = false;
+
+        anim.play(.walk);
+
+        try expect.equal(anim.anim_type, .walk);
+        try expect.equal(anim.frame, 0);
+        try expect.equal(anim.elapsed_time, 0);
+        try expect.toBeTrue(anim.playing);
+    }
 };
 
 // ============================================================================
-// Z-Index Sorting Tests
+// Effect Types Tests
 // ============================================================================
 
-pub const ZIndexSortingTests = struct {
-    test "entities can be sorted by z_index" {
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        defer _ = gpa.deinit();
-        const allocator = gpa.allocator();
+pub const EffectTests = struct {
+    test "Fade effect default values" {
+        const fade = gfx.Fade{};
 
-        var registry = ecs.Registry.init(allocator);
-        defer registry.deinit();
+        try expect.equal(fade.alpha, 1.0);
+        try expect.equal(fade.target_alpha, 1.0);
+        try expect.equal(fade.speed, 1.0);
+        try expect.toBeFalse(fade.remove_on_fadeout);
+    }
 
-        // Create entities with various z-indices (out of order)
-        const e1 = registry.create();
-        registry.add(e1, gfx.Position{ .x = 0, .y = 0 });
-        registry.add(e1, gfx.Sprite{ .name = "ui", .z_index = gfx.ZIndex.ui });
-
-        const e2 = registry.create();
-        registry.add(e2, gfx.Position{ .x = 0, .y = 0 });
-        registry.add(e2, gfx.Sprite{ .name = "bg", .z_index = gfx.ZIndex.background });
-
-        const e3 = registry.create();
-        registry.add(e3, gfx.Position{ .x = 0, .y = 0 });
-        registry.add(e3, gfx.Sprite{ .name = "char", .z_index = gfx.ZIndex.characters });
-
-        const e4 = registry.create();
-        registry.add(e4, gfx.Position{ .x = 0, .y = 0 });
-        registry.add(e4, gfx.Sprite{ .name = "item", .z_index = gfx.ZIndex.items });
-
-        // Collect and sort by z_index (simulating what the render system does)
-        const EntitySort = struct {
-            entity: ecs.Entity,
-            z_index: u8,
+    test "Fade effect update increases alpha" {
+        var fade = gfx.Fade{
+            .alpha = 0.0,
+            .target_alpha = 1.0,
+            .speed = 2.0,
         };
-        var entities: std.ArrayList(EntitySort) = .empty;
-        defer entities.deinit(allocator);
 
-        var view = registry.view(.{ gfx.Position, gfx.Sprite }, .{});
-        var iter = @TypeOf(view).Iterator.init(&view);
-        while (iter.next()) |entity| {
-            const sprite = view.getConst(gfx.Sprite, entity);
-            entities.append(allocator, .{
-                .entity = entity,
-                .z_index = sprite.z_index,
-            }) catch continue;
-        }
+        fade.update(0.25);
+        try expect.equal(fade.alpha, 0.5);
 
-        std.mem.sort(EntitySort, entities.items, {}, struct {
-            fn lessThan(_: void, a: EntitySort, b: EntitySort) bool {
-                return a.z_index < b.z_index;
-            }
-        }.lessThan);
-
-        // Verify sort order: background, items, characters, ui
-        try expect.equal(entities.items.len, 4);
-        try expect.equal(entities.items[0].z_index, gfx.ZIndex.background);
-        try expect.equal(entities.items[1].z_index, gfx.ZIndex.items);
-        try expect.equal(entities.items[2].z_index, gfx.ZIndex.characters);
-        try expect.equal(entities.items[3].z_index, gfx.ZIndex.ui);
+        fade.update(0.25);
+        try expect.equal(fade.alpha, 1.0);
     }
 
-    test "same z_index maintains order" {
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        defer _ = gpa.deinit();
-        const allocator = gpa.allocator();
+    test "Fade effect update decreases alpha" {
+        var fade = gfx.Fade{
+            .alpha = 1.0,
+            .target_alpha = 0.0,
+            .speed = 4.0,
+        };
 
-        var registry = ecs.Registry.init(allocator);
-        defer registry.deinit();
-
-        // Create multiple entities with same z_index
-        for (0..5) |_| {
-            const entity = registry.create();
-            registry.add(entity, gfx.Position{ .x = 0, .y = 0 });
-            registry.add(entity, gfx.Sprite{ .name = "char", .z_index = gfx.ZIndex.characters });
-        }
-
-        var view = registry.view(.{ gfx.Position, gfx.Sprite }, .{});
-        var count: usize = 0;
-        var iter = @TypeOf(view).Iterator.init(&view);
-        while (iter.next()) |entity| {
-            const sprite = view.getConst(gfx.Sprite, entity);
-            try expect.equal(sprite.z_index, gfx.ZIndex.characters);
-            count += 1;
-        }
-
-        try expect.equal(count, 5);
-    }
-};
-
-// ============================================================================
-// View Iteration Tests
-// ============================================================================
-
-pub const ViewIterationTests = struct {
-    test "Position and Animation view iteration" {
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        defer _ = gpa.deinit();
-        const allocator = gpa.allocator();
-
-        var registry = ecs.Registry.init(allocator);
-        defer registry.deinit();
-
-        // Create entities with Position and Animation
-        for (0..3) |i| {
-            const entity = registry.create();
-            registry.add(entity, gfx.Position{
-                .x = @as(f32, @floatFromInt(i)) * 10,
-                .y = @as(f32, @floatFromInt(i)) * 20,
-            });
-            registry.add(entity, TestAnimation.init(.idle));
-        }
-
-        // Iterate and update
-        var view = registry.view(.{ gfx.Position, TestAnimation }, .{});
-        var iter = @TypeOf(view).Iterator.init(&view);
-        var count: usize = 0;
-        var sum_x: f32 = 0;
-        var sum_y: f32 = 0;
-        while (iter.next()) |entity| {
-            const pos = view.getConst(gfx.Position, entity);
-            var anim = view.get(TestAnimation, entity);
-
-            // Collect position values (order not guaranteed)
-            sum_x += pos.x;
-            sum_y += pos.y;
-
-            // Modify animation
-            anim.update(0.1);
-            count += 1;
-        }
-
-        try expect.equal(count, 3);
-        // Sum of positions: (0+10+20, 0+20+40)
-        try expect.equal(sum_x, 30);
-        try expect.equal(sum_y, 60);
+        fade.update(0.25);
+        try expect.equal(fade.alpha, 0.0);
     }
 
-    test "empty view returns no entities" {
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        defer _ = gpa.deinit();
-        const allocator = gpa.allocator();
+    test "Fade effect isComplete" {
+        var fade = gfx.Fade{
+            .alpha = 0.99,
+            .target_alpha = 1.0,
+            .speed = 1.0,
+        };
 
-        var registry = ecs.Registry.init(allocator);
-        defer registry.deinit();
+        try expect.toBeTrue(fade.isComplete());
 
-        // Create entities without the required components
-        for (0..5) |_| {
-            const entity = registry.create();
-            registry.add(entity, gfx.Position{ .x = 0, .y = 0 });
-            // No Animation component
-        }
+        fade.alpha = 0.5;
+        try expect.toBeFalse(fade.isComplete());
+    }
 
-        var view = registry.view(.{ gfx.Position, TestAnimation }, .{});
-        var iter = @TypeOf(view).Iterator.init(&view);
-        var count: usize = 0;
-        while (iter.next()) |_| {
-            count += 1;
-        }
+    test "Fade effect shouldRemove" {
+        var fade = gfx.Fade{
+            .alpha = 0.005,
+            .target_alpha = 0.0,
+            .speed = 1.0,
+            .remove_on_fadeout = true,
+        };
 
-        try expect.equal(count, 0);
+        try expect.toBeTrue(fade.shouldRemove());
+
+        fade.remove_on_fadeout = false;
+        try expect.toBeFalse(fade.shouldRemove());
+
+        fade.remove_on_fadeout = true;
+        fade.alpha = 0.5;
+        try expect.toBeFalse(fade.shouldRemove());
+    }
+
+    test "TemporalFade calculateAlpha before fade starts" {
+        const temporal = gfx.TemporalFade{
+            .fade_start_hour = 18.0,
+            .fade_end_hour = 22.0,
+            .min_alpha = 0.2,
+        };
+
+        const alpha = temporal.calculateAlpha(12.0);
+        try expect.equal(alpha, 1.0);
+    }
+
+    test "TemporalFade calculateAlpha during fade" {
+        const temporal = gfx.TemporalFade{
+            .fade_start_hour = 18.0,
+            .fade_end_hour = 22.0,
+            .min_alpha = 0.2,
+        };
+
+        const alpha = temporal.calculateAlpha(20.0);
+        // At 20.0, we're 50% through the fade (18-22 is 4 hours, 20 is 2 hours in)
+        // Alpha should be 1.0 - 0.5 * (1.0 - 0.2) = 1.0 - 0.4 = 0.6
+        try expect.equal(alpha, 0.6);
+    }
+
+    test "TemporalFade calculateAlpha after fade ends" {
+        const temporal = gfx.TemporalFade{
+            .fade_start_hour = 18.0,
+            .fade_end_hour = 22.0,
+            .min_alpha = 0.2,
+        };
+
+        const alpha = temporal.calculateAlpha(23.0);
+        try expect.equal(alpha, 0.2);
+    }
+
+    test "Flash effect default values" {
+        const flash = gfx.Flash{};
+
+        try expect.equal(flash.duration, 0.1);
+        try expect.equal(flash.remaining, 0.1);
+    }
+
+    test "Flash effect update" {
+        var flash = gfx.Flash{
+            .duration = 0.2,
+            .remaining = 0.2,
+        };
+
+        flash.update(0.1);
+        try expect.equal(flash.remaining, 0.1);
+
+        flash.update(0.1);
+        try expect.equal(flash.remaining, 0.0);
+    }
+
+    test "Flash effect isComplete" {
+        var flash = gfx.Flash{
+            .duration = 0.1,
+            .remaining = 0.05,
+        };
+
+        try expect.toBeFalse(flash.isComplete());
+
+        flash.update(0.1);
+        try expect.toBeTrue(flash.isComplete());
     }
 };
 
 // ============================================================================
-// Sprite Name Generation Tests (for animation rendering)
+// Sprite Name Generation Tests
 // ============================================================================
 
 pub const SpriteNameTests = struct {

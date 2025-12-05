@@ -1,7 +1,7 @@
 //! Example 01: Basic Sprite Rendering
 //!
 //! This example demonstrates:
-//! - Using Engine with window management (new API)
+//! - Using VisualEngine for window management
 //! - Loading a sprite atlas
 //! - Drawing sprites at positions
 //! - Using the UI helper for text
@@ -9,7 +9,6 @@
 //! Run with: zig build run-example-01
 
 const std = @import("std");
-const ecs = @import("ecs");
 const gfx = @import("labelle");
 
 pub fn main() !void {
@@ -21,25 +20,23 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // Initialize ECS registry (required by Engine)
-    var registry = ecs.Registry.init(allocator);
-    defer registry.deinit();
-
-    // Initialize Engine with window management
-    var engine = try gfx.Engine.init(allocator, &registry, .{
+    // Initialize VisualEngine with window management
+    var engine = try gfx.VisualEngine.init(allocator, .{
         .window = .{
             .width = 800,
             .height = 600,
             .title = "Example 01: Basic Sprite",
             .target_fps = 60,
-            .flags = .{ .window_hidden = ci_test },
+            .hidden = ci_test,
         },
-        .clear_color = gfx.Color.dark_gray,
+        .clear_color_r = 40,
+        .clear_color_g = 40,
+        .clear_color_b = 40,
     });
     defer engine.deinit();
 
     // Load sprite atlas (you would replace with your own atlas)
-    // try engine.getRenderer().loadAtlas("sprites", "assets/sprites.json", "assets/sprites.png");
+    // try engine.loadAtlas("sprites", "assets/sprites.json", "assets/sprites.png");
 
     // Sprite positions
     const positions = [_]struct { x: f32, y: f32 }{
@@ -51,7 +48,7 @@ pub fn main() !void {
 
     var frame_count: u32 = 0;
 
-    // Main loop - using new Engine API
+    // Main loop - using VisualEngine API
     while (engine.isRunning()) {
         frame_count += 1;
         if (ci_test) {
@@ -60,7 +57,6 @@ pub fn main() !void {
         }
 
         engine.beginFrame();
-        defer engine.endFrame();
 
         // Draw sprites at each position using UI helper
         for (positions) |pos| {
@@ -89,5 +85,7 @@ pub fn main() !void {
         gfx.Engine.UI.text("Basic Sprite Example", .{ .x = 10, .y = 10, .size = 20, .color = gfx.Color.white });
         gfx.Engine.UI.text("Replace atlas paths with your own sprites", .{ .x = 10, .y = 40, .size = 16, .color = gfx.Color.light_gray });
         gfx.Engine.UI.text("Press ESC to exit", .{ .x = 10, .y = 60, .size = 16, .color = gfx.Color.light_gray });
+
+        engine.endFrame();
     }
 }

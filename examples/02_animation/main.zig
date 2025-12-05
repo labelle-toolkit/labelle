@@ -1,16 +1,15 @@
 //! Example 02: Animation System
 //!
 //! This example demonstrates:
-//! - Using Engine with window management
+//! - Using VisualEngine for window management
 //! - Creating and updating animations with custom animation types
 //! - Animation types and transitions
 //! - Frame-based sprite animation
-//! - Using engine.input for keyboard handling
+//! - Using Engine.Input for keyboard handling
 //!
 //! Run with: zig build run-example-02
 
 const std = @import("std");
-const ecs = @import("ecs");
 const gfx = @import("labelle");
 
 // Define animation types for this example with config
@@ -41,20 +40,18 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // Initialize ECS registry (required by Engine)
-    var registry = ecs.Registry.init(allocator);
-    defer registry.deinit();
-
-    // Initialize Engine with window management
-    var engine = try gfx.Engine.init(allocator, &registry, .{
+    // Initialize VisualEngine with window management
+    var engine = try gfx.VisualEngine.init(allocator, .{
         .window = .{
             .width = 800,
             .height = 600,
             .title = "Example 02: Animation",
             .target_fps = 60,
-            .flags = .{ .window_hidden = ci_test },
+            .hidden = ci_test,
         },
-        .clear_color = gfx.Color.dark_gray,
+        .clear_color_r = 40,
+        .clear_color_g = 40,
+        .clear_color_b = 40,
     });
     defer engine.deinit();
 
@@ -74,7 +71,7 @@ pub fn main() !void {
         }
         const dt = engine.getDeltaTime();
 
-        // Handle input for animation switching using engine.input
+        // Handle input for animation switching using Engine.Input
         if (gfx.Engine.Input.isPressed(.one)) {
             current_type = .idle;
             animation.play(.idle);
@@ -99,7 +96,6 @@ pub fn main() !void {
         const sprite_name = animation.getSpriteName("player", &sprite_buffer);
 
         engine.beginFrame();
-        defer engine.endFrame();
 
         // Draw animation visualization
         const center_x: i32 = 400;
@@ -153,5 +149,7 @@ pub fn main() !void {
             @tagName(current_type),
         }) catch "?";
         gfx.Engine.UI.text(anim_str, .{ .x = 10, .y = 180, .size = 16, .color = gfx.Color.white });
+
+        engine.endFrame();
     }
 }

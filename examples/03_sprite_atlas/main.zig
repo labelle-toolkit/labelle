@@ -1,7 +1,7 @@
 //! Example 03: Sprite Atlas Loading
 //!
 //! This example demonstrates:
-//! - Using Engine with window management
+//! - Using VisualEngine for window management
 //! - Loading TexturePacker JSON atlases
 //! - Managing multiple atlases
 //! - Querying sprite data
@@ -9,7 +9,6 @@
 //! Run with: zig build run-example-03
 
 const std = @import("std");
-const ecs = @import("ecs");
 const gfx = @import("labelle");
 
 pub fn main() !void {
@@ -21,27 +20,25 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // Initialize ECS registry (required by Engine)
-    var registry = ecs.Registry.init(allocator);
-    defer registry.deinit();
-
-    // Initialize Engine with window management
-    var engine = try gfx.Engine.init(allocator, &registry, .{
+    // Initialize VisualEngine with window management
+    var engine = try gfx.VisualEngine.init(allocator, .{
         .window = .{
             .width = 800,
             .height = 600,
             .title = "Example 03: Sprite Atlas",
             .target_fps = 60,
-            .flags = .{ .window_hidden = ci_test },
+            .hidden = ci_test,
         },
-        .clear_color = gfx.Color.dark_gray,
+        .clear_color_r = 40,
+        .clear_color_g = 40,
+        .clear_color_b = 40,
     });
     defer engine.deinit();
 
     // Demo: Show how atlas loading would work
     // In a real game, you would load actual atlas files:
     //
-    // try engine.getRenderer().loadAtlas(
+    // try engine.loadAtlas(
     //     "characters",
     //     "assets/characters.json",
     //     "assets/characters.png"
@@ -75,7 +72,6 @@ pub fn main() !void {
         }
 
         engine.beginFrame();
-        defer engine.endFrame();
 
         // Title
         gfx.Engine.UI.text("Sprite Atlas Example", .{ .x = 10, .y = 10, .size = 20, .color = gfx.Color.white });
@@ -126,15 +122,15 @@ pub fn main() !void {
         gfx.Engine.UI.text("Code Example:", .{ .x = 50, .y = 450, .size = 18, .color = gfx.Color.white });
 
         const code_lines = [_][]const u8{
-            "// Load atlas via Engine config",
-            "var engine = try gfx.Engine.init(allocator, &registry, .{",
+            "// Load atlas via VisualEngine config",
+            "var engine = try gfx.VisualEngine.init(allocator, .{",
             "    .atlases = &.{",
             "        .{ .name = \"chars\", .json = \"chars.json\", .texture = \"chars.png\" },",
             "    },",
             "});",
             "",
             "// Or load manually",
-            "try engine.getRenderer().loadAtlas(\"chars\", \"chars.json\", \"chars.png\");",
+            "try engine.loadAtlas(\"chars\", \"chars.json\", \"chars.png\");",
         };
 
         for (code_lines, 0..) |line, i| {
@@ -149,5 +145,7 @@ pub fn main() !void {
         }
 
         gfx.Engine.UI.text("Press ESC to exit", .{ .x = 10, .y = 580, .size = 14, .color = gfx.Color.light_gray });
+
+        engine.endFrame();
     }
 }
