@@ -1,57 +1,47 @@
 //! labelle - 2D Graphics Library for Zig Games
 //!
-//! A graphics library combining rendering with zig-ecs entity component system.
-//! Provides sprite rendering, animation, texture atlas management, and ECS render systems.
+//! A graphics library for sprite rendering, animation, and texture atlas management.
+//! Provides a self-contained VisualEngine that owns sprites internally.
 //!
 //! ## Features
-//! - High-level Engine API for simplified usage
+//! - VisualEngine API for simplified sprite management
 //! - Static and animated sprite rendering
-//! - TexturePacker atlas support (JSON format)
+//! - TexturePacker atlas support (JSON and comptime .zon formats)
 //! - Generic animation system with config-based enums
 //! - Z-index based layer management
-//! - Camera abstraction with pan/zoom
-//! - ECS integration via render systems
+//! - Camera abstraction with pan/zoom and entity following
 //! - Visual effects (fade, temporal fade, flash)
 //! - **Pluggable backend system** for different rendering libraries
 //!
-//! ## Quick Start with Engine API
+//! ## Quick Start with VisualEngine
 //! ```zig
 //! const gfx = @import("labelle");
+//! const VisualEngine = gfx.visual_engine.VisualEngine;
 //!
-//! // Define animations with config
-//! const Animations = struct {
-//!     const Player = enum {
-//!         idle, walk, attack,
-//!         pub fn config(self: @This()) gfx.AnimConfig {
-//!             return switch (self) {
-//!                 .idle => .{ .frames = 4, .frame_duration = 0.2 },
-//!                 .walk => .{ .frames = 6, .frame_duration = 0.1 },
-//!                 .attack => .{ .frames = 5, .frame_duration = 0.08 },
-//!             };
-//!         }
-//!     };
-//! };
-//!
-//! // Initialize engine
-//! var engine = try gfx.Engine.init(allocator, &registry, .{
+//! var engine = try VisualEngine.init(allocator, .{
+//!     .window = .{ .width = 800, .height = 600, .title = "My Game" },
 //!     .atlases = &.{
 //!         .{ .name = "sprites", .json = "assets/sprites.json", .texture = "assets/sprites.png" },
 //!     },
 //! });
 //! defer engine.deinit();
 //!
-//! // Create entities
-//! const tree = registry.create();
-//! registry.add(tree, gfx.Position{ .x = 100, .y = 100 });
-//! registry.add(tree, gfx.Sprite{ .name = "tree_01", .z_index = gfx.ZIndex.items });
+//! // Create sprites - engine owns them internally
+//! const player = try engine.addSprite(.{
+//!     .sprite_name = "player_idle",
+//!     .x = 400, .y = 300,
+//!     .z_index = gfx.visual_engine.ZIndex.characters,
+//! });
 //!
-//! const player = registry.create();
-//! registry.add(player, gfx.Position{ .x = 200, .y = 200 });
-//! registry.add(player, gfx.Animation(Animations.Player).init(.idle));
+//! // Play animations
+//! _ = engine.playAnimation(player, "walk", 6, 0.6, true);
 //!
 //! // Game loop
-//! engine.render(dt);
-//! engine.renderAnimations(Animations.Player, "player", dt);
+//! while (engine.isRunning()) {
+//!     engine.beginFrame();
+//!     engine.tick(engine.getDeltaTime());
+//!     engine.endFrame();
+//! }
 //! ```
 //!
 //! ## Custom Backend Usage
@@ -66,20 +56,8 @@
 //! var renderer = MyGfx.Renderer.init(allocator);
 //! var camera = MyGfx.Camera.init();
 //! ```
-//!
-//! ## Sokol Backend Usage
-//! ```zig
-//! const gfx = @import("labelle");
-//!
-//! // Create library types with sokol backend
-//! const SokolGfx = gfx.withBackend(gfx.SokolBackend);
-//!
-//! // Use sokol-backed types
-//! var renderer = SokolGfx.Renderer.init(allocator);
-//! ```
 
 const std = @import("std");
-pub const ecs = @import("ecs");
 
 // Logging
 pub const log = @import("log.zig");
@@ -103,7 +81,7 @@ pub const SokolBackend = sokol_backend.SokolBackend;
 // Default backend (raylib)
 pub const DefaultBackend = Backend(RaylibBackend);
 
-// Engine API (recommended)
+// Engine API (provides Input and UI helpers)
 const engine_mod = @import("engine/engine.zig");
 pub const Engine = engine_mod.Engine;
 pub const EngineWith = engine_mod.EngineWith;
@@ -164,9 +142,6 @@ pub const camera = @import("camera/camera.zig");
 pub const Camera = camera.Camera;
 pub const CameraWith = camera.CameraWith;
 
-// ECS system exports (for advanced usage)
-pub const systems = @import("ecs/systems.zig");
-
 // Effects exports
 pub const effects = @import("effects/effects.zig");
 pub const Fade = effects.Fade;
@@ -174,11 +149,15 @@ pub const TemporalFade = effects.TemporalFade;
 pub const Flash = effects.Flash;
 pub const FlashWith = effects.FlashWith;
 
-// New self-contained rendering engine (preview)
+// Self-contained rendering engine (recommended for new projects)
 pub const rendering_engine = @import("engine/rendering_engine.zig");
 pub const visual_engine = @import("engine/visual_engine.zig");
 pub const sprite_storage = @import("engine/sprite_storage.zig");
 pub const animation_def = @import("animation_def.zig");
+
+// Re-export VisualEngine at top level for convenience
+pub const VisualEngine = visual_engine.VisualEngine;
+pub const SpriteId = sprite_storage.SpriteId;
 
 /// Create a complete set of labelle types using a custom backend implementation.
 ///
@@ -241,18 +220,7 @@ pub fn withBackend(comptime Impl: type) type {
         pub const TemporalFade = effects.TemporalFade;
         pub const Flash = effects.FlashWith(B);
 
-        // Effect systems
-        pub fn fadeUpdateSystem(registry: *ecs.Registry, dt: f32) void {
-            effects.fadeUpdateSystemWith(B, registry, dt);
-        }
-        pub fn temporalFadeSystem(registry: *ecs.Registry, current_hour: f32) void {
-            effects.temporalFadeSystemWith(B, registry, current_hour);
-        }
-        pub fn flashUpdateSystem(registry: *ecs.Registry, dt: f32) void {
-            effects.flashUpdateSystemWith(B, registry, dt);
-        }
-
-        // Engine (uses backend-specific types)
+        // Engine (provides Input and UI helpers)
         pub const Engine = engine_mod.EngineWith(B);
         pub const AtlasConfig = engine_mod.AtlasConfig;
         pub const CameraConfig = engine_mod.CameraConfig;

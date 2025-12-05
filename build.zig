@@ -18,12 +18,6 @@ pub fn build(b: *std.Build) void {
     const raylib = raylib_dep.module("raylib");
     const raylib_artifact = raylib_dep.artifact("raylib");
 
-    const ecs_dep = b.dependency("entt", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    const ecs = ecs_dep.module("zig-ecs");
-
     const zspec_dep = b.dependency("zspec", .{
         .target = target,
         .optimize = optimize,
@@ -45,7 +39,6 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "zig_utils", .module = zig_utils },
             .{ .name = "raylib", .module = raylib },
-            .{ .name = "ecs", .module = ecs },
             .{ .name = "sokol", .module = sokol },
         },
     });
@@ -61,7 +54,6 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "zig_utils", .module = zig_utils },
                 .{ .name = "raylib", .module = raylib },
-                .{ .name = "ecs", .module = ecs },
                 .{ .name = "sokol", .module = sokol },
             },
         }),
@@ -92,7 +84,6 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "labelle", .module = lib_mod },
                 .{ .name = "raylib", .module = raylib },
-                .{ .name = "ecs", .module = ecs },
             },
         });
 
@@ -128,7 +119,6 @@ pub fn build(b: *std.Build) void {
                 .imports = &.{
                     .{ .name = "labelle", .module = lib_mod },
                     .{ .name = "raylib", .module = raylib },
-                    .{ .name = "ecs", .module = ecs },
                 },
             }),
         });
@@ -156,7 +146,6 @@ pub fn build(b: *std.Build) void {
                 .imports = &.{
                     .{ .name = "labelle", .module = lib_mod },
                     .{ .name = "sokol", .module = sokol },
-                    .{ .name = "ecs", .module = ecs },
                 },
             }),
         });
@@ -216,7 +205,6 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "labelle", .module = lib_mod },
                 .{ .name = "raylib", .module = raylib },
-                .{ .name = "ecs", .module = ecs },
                 .{ .name = "zspec", .module = zspec },
             },
         }),

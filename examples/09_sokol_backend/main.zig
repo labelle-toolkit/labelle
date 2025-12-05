@@ -13,7 +13,6 @@ const sokol = @import("sokol");
 const sg = sokol.gfx;
 const sgl = sokol.gl;
 const sapp = sokol.app;
-const ecs = @import("ecs");
 const gfx = @import("labelle");
 
 // Create types using the sokol backend
@@ -37,9 +36,10 @@ const Animation = SokolGfx.AnimationT(AnimType);
 // Global state for sokol callback pattern
 const State = struct {
     allocator: std.mem.Allocator,
-    registry: *ecs.Registry,
     pass_action: sg.PassAction,
-    player: ecs.Entity,
+    animation: Animation,
+    position_x: f32 = 400,
+    position_y: f32 = 300,
     frame_count: u32 = 0,
 };
 
@@ -63,12 +63,9 @@ export fn init() void {
         .clear_value = .{ .r = 0.2, .g = 0.2, .b = 0.3, .a = 1.0 },
     };
 
-    // Create player entity with animation
-    state.player = state.registry.create();
-    state.registry.add(state.player, gfx.Position{ .x = 400, .y = 300 });
-    var player_anim = Animation.init(.idle);
-    player_anim.z_index = gfx.ZIndex.characters;
-    state.registry.add(state.player, player_anim);
+    // Initialize animation
+    state.animation = Animation.init(.idle);
+    state.animation.z_index = gfx.ZIndex.characters;
 
     std.debug.print("Sokol backend initialized successfully!\n", .{});
     std.debug.print("Window size: {}x{}\n", .{ sapp.width(), sapp.height() });
@@ -81,8 +78,7 @@ export fn frame() void {
     const dt: f32 = @floatCast(sapp.frameDuration());
 
     // Update animation
-    var anim = state.registry.get(Animation, state.player);
-    anim.update(dt);
+    state.animation.update(dt);
 
     // Begin render pass
     sg.beginPass(.{
@@ -103,16 +99,12 @@ export fn frame() void {
     sgl.loadIdentity();
 
     // Draw a colored rectangle to show the animation position
-    const pos = state.registry.getConst(gfx.Position, state.player);
-    const anim_state = state.registry.getConst(Animation, state.player);
-
-    // Draw placeholder rectangle for the animated entity
     const size: f32 = 60;
-    const x = pos.x - size / 2;
-    const y = pos.y - size / 2;
+    const x = state.position_x - size / 2;
+    const y = state.position_y - size / 2;
 
     // Change color based on animation type
-    const color = if (anim_state.anim_type == .idle)
+    const color = if (state.animation.anim_type == .idle)
         SokolGfx.Color{ .r = 100, .g = 200, .b = 100, .a = 255 }
     else
         SokolGfx.Color{ .r = 100, .g = 100, .b = 200, .a = 255 };
@@ -128,10 +120,10 @@ export fn frame() void {
 
     // Draw frame indicator
     const frame_size: f32 = 15;
-    const frame_x = pos.x - 30 + @as(f32, @floatFromInt(anim_state.frame)) * frame_size;
+    const frame_x = state.position_x - 30 + @as(f32, @floatFromInt(state.animation.frame)) * frame_size;
     gfx.SokolBackend.drawRectangle(
         @intFromFloat(frame_x),
-        @intFromFloat(pos.y + 40),
+        @intFromFloat(state.position_y + 40),
         @intFromFloat(frame_size - 2),
         10,
         SokolGfx.Color{ .r = 255, .g = 255, .b = 0, .a = 255 },
@@ -153,8 +145,6 @@ export fn frame() void {
 export fn cleanup() void {
     sgl.shutdown();
     sg.shutdown();
-    // Note: registry.deinit() is handled by defer in main() to ensure cleanup
-    // even if the app exits abnormally
     std.debug.print("Sokol backend cleanup complete.\n", .{});
 }
 
@@ -166,11 +156,10 @@ export fn event(ev: ?*const sapp.Event) void {
             .ESCAPE => sapp.quit(),
             .SPACE => {
                 // Toggle animation
-                var anim = state.registry.get(Animation, state.player);
-                if (anim.anim_type == .idle) {
-                    anim.play(.walk);
+                if (state.animation.anim_type == .idle) {
+                    state.animation.play(.walk);
                 } else {
-                    anim.play(.idle);
+                    state.animation.play(.idle);
                 }
             },
             else => {},
@@ -184,16 +173,11 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // Initialize ECS registry
-    var registry = ecs.Registry.init(allocator);
-    defer registry.deinit();
-
     // Store state for callbacks
     state = .{
         .allocator = allocator,
-        .registry = &registry,
         .pass_action = .{},
-        .player = undefined,
+        .animation = Animation.init(.idle),
     };
 
     // Run sokol app

@@ -1,13 +1,12 @@
 // Engine API tests
 //
-// Note: These tests focus on Engine initialization, configuration, and
-// component integration. Actual rendering requires raylib window context
+// Note: These tests focus on Engine configuration and
+// component types. Actual rendering requires raylib window context
 // and is tested via the examples.
 
 const std = @import("std");
 const zspec = @import("zspec");
 const gfx = @import("labelle");
-const ecs = @import("ecs");
 
 const expect = zspec.expect;
 
@@ -143,119 +142,46 @@ pub const EngineConfigTests = struct {
 };
 
 // ============================================================================
-// ECS Integration Tests
+// Animation Component Tests
 // ============================================================================
 
-pub const EcsIntegrationTests = struct {
-    test "can add Position and Sprite to entity" {
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        defer _ = gpa.deinit();
-        const allocator = gpa.allocator();
+pub const AnimationComponentTests = struct {
+    test "Animation component initializes correctly" {
+        const anim = TestAnimation.init(.idle);
 
-        var registry = ecs.Registry.init(allocator);
-        defer registry.deinit();
-
-        const entity = registry.create();
-        registry.add(entity, gfx.Position{ .x = 100, .y = 200 });
-        registry.add(entity, gfx.Sprite{
-            .name = "test_sprite",
-            .z_index = gfx.ZIndex.items,
-        });
-
-        const pos = registry.getConst(gfx.Position, entity);
-        const sprite = registry.getConst(gfx.Sprite, entity);
-
-        try expect.equal(pos.x, 100);
-        try expect.equal(pos.y, 200);
-        try expect.toBeTrue(std.mem.eql(u8, sprite.name, "test_sprite"));
-        try expect.equal(sprite.z_index, gfx.ZIndex.items);
+        try expect.equal(anim.anim_type, .idle);
+        try expect.equal(anim.frame, 0);
+        try expect.toBeTrue(anim.playing);
     }
 
-    test "can add Position and Animation to entity" {
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        defer _ = gpa.deinit();
-        const allocator = gpa.allocator();
+    test "Animation component plays different types" {
+        var anim = TestAnimation.init(.idle);
 
-        var registry = ecs.Registry.init(allocator);
-        defer registry.deinit();
+        anim.play(.walk);
+        try expect.equal(anim.anim_type, .walk);
+        try expect.equal(anim.frame, 0);
 
-        const entity = registry.create();
-        registry.add(entity, gfx.Position{ .x = 50, .y = 75 });
+        anim.play(.attack);
+        try expect.equal(anim.anim_type, .attack);
+        try expect.equal(anim.frame, 0);
+    }
 
+    test "Animation component has render properties" {
         var anim = TestAnimation.init(.idle);
         anim.z_index = gfx.ZIndex.characters;
         anim.scale = 2.0;
-        registry.add(entity, anim);
+        anim.flip_x = true;
 
-        const pos = registry.getConst(gfx.Position, entity);
-        const stored_anim = registry.getConst(TestAnimation, entity);
-
-        try expect.equal(pos.x, 50);
-        try expect.equal(pos.y, 75);
-        try expect.equal(stored_anim.anim_type, .idle);
-        try expect.equal(stored_anim.z_index, gfx.ZIndex.characters);
-        try expect.equal(stored_anim.scale, 2.0);
+        try expect.equal(anim.z_index, gfx.ZIndex.characters);
+        try expect.equal(anim.scale, 2.0);
+        try expect.toBeTrue(anim.flip_x);
     }
 
-    test "can query entities with Position and Sprite" {
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        defer _ = gpa.deinit();
-        const allocator = gpa.allocator();
-
-        var registry = ecs.Registry.init(allocator);
-        defer registry.deinit();
-
-        // Create 3 entities with Position and Sprite
-        for (0..3) |i| {
-            const entity = registry.create();
-            registry.add(entity, gfx.Position{
-                .x = @as(f32, @floatFromInt(i)) * 100,
-                .y = @as(f32, @floatFromInt(i)) * 50,
-            });
-            registry.add(entity, gfx.Sprite{
-                .name = "sprite",
-                .z_index = @intCast(i),
-            });
-        }
-
-        // Create 2 entities with only Position (no Sprite)
-        for (0..2) |_| {
-            const entity = registry.create();
-            registry.add(entity, gfx.Position{ .x = 0, .y = 0 });
-        }
-
-        // Query should find only the 3 entities with both components
-        var view = registry.view(.{ gfx.Position, gfx.Sprite }, .{});
-        var count: usize = 0;
-        var iter = @TypeOf(view).Iterator.init(&view);
-        while (iter.next()) |_| {
-            count += 1;
-        }
-
-        try expect.equal(count, 3);
-    }
-
-    test "can modify Animation component through registry" {
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        defer _ = gpa.deinit();
-        const allocator = gpa.allocator();
-
-        var registry = ecs.Registry.init(allocator);
-        defer registry.deinit();
-
-        const entity = registry.create();
-        registry.add(entity, gfx.Position{ .x = 0, .y = 0 });
-        registry.add(entity, TestAnimation.init(.idle));
-
-        // Modify animation through registry
-        var anim = registry.get(TestAnimation, entity);
-        anim.play(.walk);
+    test "Animation component updates elapsed time" {
+        var anim = TestAnimation.init(.idle);
         anim.update(0.05);
 
-        // Verify changes persisted
-        const stored = registry.getConst(TestAnimation, entity);
-        try expect.equal(stored.anim_type, .walk);
-        try expect.equal(stored.elapsed_time, 0.05);
+        try expect.equal(anim.elapsed_time, 0.05);
     }
 };
 
