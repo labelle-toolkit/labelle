@@ -623,20 +623,32 @@ pub fn VisualEngineWith(comptime BackendType: type, comptime max_sprites: usize)
             for (slice) |id| {
                 const sprite = &self.storage.sprites[id.index];
                 const tint = BackendType.color(sprite.tint_r, sprite.tint_g, sprite.tint_b, sprite.tint_a);
+                
+                const draw_opts: Renderer.DrawOptions = .{
+                    .offset_x = sprite.offset_x,
+                    .offset_y = sprite.offset_y,
+                    .scale = sprite.scale,
+                    .rotation = sprite.rotation,
+                    .tint = tint,
+                    .flip_x = sprite.flip_x,
+                    .flip_y = sprite.flip_y,
+                };
+
+                // Viewport culling - skip if sprite is outside camera view
+                if (!self.renderer.shouldRenderSprite(
+                    sprite.getSpriteName(),
+                    sprite.x,
+                    sprite.y,
+                    draw_opts,
+                )) {
+                    continue;
+                }
 
                 self.renderer.drawSprite(
                     sprite.getSpriteName(),
                     sprite.x,
                     sprite.y,
-                    .{
-                        .offset_x = sprite.offset_x,
-                        .offset_y = sprite.offset_y,
-                        .scale = sprite.scale,
-                        .rotation = sprite.rotation,
-                        .tint = tint,
-                        .flip_x = sprite.flip_x,
-                        .flip_y = sprite.flip_y,
-                    },
+                    draw_opts,
                 );
             }
 
@@ -676,5 +688,5 @@ pub fn VisualEngineWith(comptime BackendType: type, comptime max_sprites: usize)
 // Default backend
 const DefaultBackend = backend_mod.Backend(raylib_backend.RaylibBackend);
 
-/// Default visual engine with raylib backend and 10000 max sprites
-pub const VisualEngine = VisualEngineWith(DefaultBackend, 10000);
+/// Default visual engine with raylib backend and 2000 max sprites
+pub const VisualEngine = VisualEngineWith(DefaultBackend, 2000);

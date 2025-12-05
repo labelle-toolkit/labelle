@@ -338,6 +338,7 @@ var engine = MyGfx.Engine.init(...);
 4. **Camera auto-centers by default** - World coords = screen coords at zoom 1
 5. **GenericSpriteStorage DataType requirements** - Must have `generation: u32` and `active: bool` fields
 6. **Use `loadAtlasComptime` for .zon atlases** - Eliminates runtime JSON parsing
+7. **Viewport culling is automatic** - Off-screen sprites are automatically skipped during rendering for better performance
 
 ## When Making Changes
 

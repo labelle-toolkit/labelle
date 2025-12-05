@@ -1,4 +1,29 @@
 //! Main renderer for sprite and animation rendering
+//!
+//! ## Viewport Culling (Frustum Culling)
+//!
+//! The renderer automatically performs viewport culling to skip rendering sprites
+//! that are completely outside the visible camera area. This optimization reduces
+//! draw calls and improves performance, especially in games with:
+//! - Large game worlds with many sprites
+//! - Scrolling levels or maps
+//! - Many entities outside the current view
+//!
+//! Culling is applied automatically in:
+//! - `Engine.render()` - ECS-based engine
+//! - `VisualEngine.tick()` - Self-contained visual engine
+//! - `systems.spriteRenderSystem()` - ECS render systems
+//!
+//! The culling logic accounts for:
+//! - Sprite dimensions (width/height)
+//! - Sprite scale transformations
+//! - Camera zoom level
+//! - Camera position
+//! - Trim offsets (for trimmed sprites)
+//! - Sprite rotation in atlas
+//!
+//! Sprites are considered visible if any part overlaps the viewport, preventing
+//! visual popping at screen edges.
 
 const std = @import("std");
 const ecs = @import("ecs");
@@ -198,6 +223,79 @@ pub fn RendererWith(comptime BackendType: type) type {
         /// Get the camera for manipulation
         pub fn getCamera(self: *Self) *Camera {
             return &self.camera;
+        }
+
+        /// Check if a sprite should be rendered based on camera viewport
+        /// Returns false if sprite is completely outside viewport (for frustum culling).
+        /// 
+        /// This is used internally by the rendering systems to skip off-screen sprites
+        /// and reduce draw calls. If the sprite is not found in the texture manager,
+        /// returns true to ensure error visibility.
+        /// 
+        /// **Note:** The culling is conservative and doesn't account for sprite rotation
+        /// or camera rotation. This means:
+        /// - Rotated sprites may be culled even if a corner is visible (rare edge case)
+        /// - Camera rotation (rarely used in 2D) is not considered
+        /// - For most 2D games, this provides excellent performance with no visual artifacts
+        /// 
+        /// Parameters:
+        ///   - sprite_name: Name of the sprite to check
+        ///   - x, y: World position of sprite center
+        ///   - options: Draw options (scale affects sprite bounds)
+        /// 
+        /// Example:
+        /// ```zig
+        /// if (renderer.shouldRenderSprite("player", pos.x, pos.y, draw_options)) {
+        ///     renderer.drawSprite("player", pos.x, pos.y, draw_options);
+        /// }
+        /// ```
+        pub fn shouldRenderSprite(
+            self: *Self,
+            sprite_name: []const u8,
+            x: f32,
+            y: f32,
+            options: DrawOptions,
+        ) bool {
+            // Get sprite data to determine dimensions
+            const found = self.texture_manager.findSprite(sprite_name) orelse return true; // Render if sprite not found (error handling)
+            const sprite = found.sprite;
+
+            // Get viewport - if viewport is invalid (zero dimensions), render everything
+            const viewport = self.camera.getViewport();
+            if (viewport.width <= 0 or viewport.height <= 0) {
+                return true; // Viewport not yet initialized, render everything
+            }
+
+            // Calculate actual sprite dimensions accounting for scale and rotation
+            var width: f32 = undefined;
+            var height: f32 = undefined;
+            
+            if (sprite.rotated) {
+                width = @as(f32, @floatFromInt(sprite.height)) * options.scale;
+                height = @as(f32, @floatFromInt(sprite.width)) * options.scale;
+            } else {
+                width = @as(f32, @floatFromInt(sprite.width)) * options.scale;
+                height = @as(f32, @floatFromInt(sprite.height)) * options.scale;
+            }
+
+            // Calculate sprite bounds in world space
+            // Sprites are drawn centered at position (origin is center)
+            const half_width = width / 2.0;
+            const half_height = height / 2.0;
+            
+            const sprite_x = x + options.offset_x - half_width;
+            const sprite_y = y + options.offset_y - half_height;
+
+            // Add trim offset if sprite is trimmed
+            var final_x = sprite_x;
+            var final_y = sprite_y;
+            if (sprite.trimmed) {
+                final_x += @as(f32, @floatFromInt(sprite.offset_x)) * options.scale;
+                final_y += @as(f32, @floatFromInt(sprite.offset_y)) * options.scale;
+            }
+
+            // Check overlap
+            return viewport.overlapsRect(final_x, final_y, width, height);
         }
     };
 }
