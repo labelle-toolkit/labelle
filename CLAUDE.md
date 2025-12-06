@@ -119,6 +119,55 @@ comptime {
 }
 ```
 
+### Pivot Points (Anchors)
+
+Pivot points determine which point of the sprite is placed at the (x, y) position and serves as the center of rotation:
+
+```zig
+const gfx = @import("labelle");
+
+// Character with bottom-center pivot (feet position)
+const player = try engine.addSprite(.{
+    .sprite_name = "player_idle",
+    .x = 400, .y = 300,
+    .pivot = .bottom_center,  // Sprite's feet at (400, 300)
+});
+
+// Room tile with bottom-left pivot (for grid placement)
+const tile = try engine.addSprite(.{
+    .sprite_name = "floor_tile",
+    .x = 0, .y = 0,
+    .pivot = .bottom_left,  // Tile's corner at (0, 0)
+});
+
+// Item with center pivot (default - good for rotation)
+const gem = try engine.addSprite(.{
+    .sprite_name = "gem",
+    .x = 100, .y = 100,
+    .pivot = .center,  // Default, can be omitted
+});
+
+// Custom pivot (e.g., weapon handle position)
+const sword = try engine.addSprite(.{
+    .sprite_name = "sword",
+    .x = 100, .y = 100,
+    .pivot = .custom,
+    .pivot_x = 0.1,  // Near left edge (handle)
+    .pivot_y = 0.9,  // Near bottom
+});
+
+// Change pivot at runtime
+_ = engine.setPivot(player, .center);
+_ = engine.setPivotCustom(sword, 0.2, 0.8);
+```
+
+Available pivot presets:
+- `center` (default) - Center of sprite
+- `top_left`, `top_center`, `top_right` - Top edge
+- `center_left`, `center_right` - Side edges
+- `bottom_left`, `bottom_center`, `bottom_right` - Bottom edge
+- `custom` - Use `pivot_x`, `pivot_y` values (0.0-1.0)
+
 ### Comptime Atlas Loading
 
 Load sprite atlas data at compile time from .zon files (eliminates JSON parsing at runtime):
@@ -274,6 +323,7 @@ pub const AnimationTests = struct {
 | 10_new_engine | Self-contained engine (headless) |
 | 11_visual_engine | Visual engine with rendering |
 | 12_comptime_animations | Comptime animation definitions |
+| 13_pivot_points | Pivot point/anchor support |
 
 ## Common Patterns
 
@@ -331,10 +381,11 @@ var engine = try MyGfx.VisualEngine.init(...);
 5. **GenericSpriteStorage DataType requirements** - Must have `generation: u32` and `active: bool` fields
 6. **Use `loadAtlasComptime` for .zon atlases** - Eliminates runtime JSON parsing
 7. **Viewport culling is automatic** - Off-screen sprites are automatically skipped during rendering for better performance
+8. **Pivot is required** - All sprites must specify a pivot point (no default). Use `.pivot = .center` for items, `.pivot = .bottom_center` for characters (feet position), `.pivot = .bottom_left` for tiles
 
 ## When Making Changes
 
 1. Run `zig build test` to ensure tests pass
 2. Run `zig build` to check compilation
 3. Update examples if API changes
-4. CI expects all 12 example screenshots to be generated
+4. CI expects all 13 example screenshots to be generated

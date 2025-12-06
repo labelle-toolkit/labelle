@@ -73,6 +73,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "08_nested_animations", .path = "examples/08_nested_animations/main.zig", .desc = "Nested animation paths" },
         .{ .name = "10_new_engine", .path = "examples/10_new_engine/main.zig", .desc = "Self-contained rendering engine (preview)" },
         .{ .name = "11_visual_engine", .path = "examples/11_visual_engine/main.zig", .desc = "Visual engine with actual rendering" },
+        .{ .name = "13_pivot_points", .path = "examples/13_pivot_points/main.zig", .desc = "Pivot point/anchor support for sprites" },
     };
 
     // Example 12: Comptime animations (needs .zon imports)

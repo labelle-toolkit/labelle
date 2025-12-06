@@ -24,6 +24,9 @@ pub const RenderFactory = Factory.define(gfx.Render, .{
     .offset_x = 0,
     .offset_y = 0,
     .tint = rl.Color.white,
+    .pivot = .center,
+    .pivot_x = 0.5,
+    .pivot_y = 0.5,
 });
 
 /// Factory for creating SpriteData with test defaults
@@ -56,7 +59,7 @@ pub const SpriteLocationFactory = Factory.define(gfx.SpriteLocation, .{
 
 pub const RenderTests = struct {
     test "default values are sensible" {
-        const render = gfx.Render{};
+        const render = gfx.Render{ .pivot = .center };
 
         try expect.equal(render.z_index, 0);
         try expect.equal(render.scale, 1.0);
@@ -94,6 +97,7 @@ pub const RenderTests = struct {
             .scale = 2.0,
             .rotation = 45.0,
             .flip_x = true,
+            .pivot = .bottom_center,
         };
 
         try expect.equal(render.z_index, 50);
@@ -104,7 +108,7 @@ pub const RenderTests = struct {
     }
 
     test "default offset values" {
-        const render = gfx.Render{};
+        const render = gfx.Render{ .pivot = .center };
 
         try expect.equal(render.offset_x, 0);
         try expect.equal(render.offset_y, 0);
@@ -114,6 +118,7 @@ pub const RenderTests = struct {
         const render = gfx.Render{
             .offset_x = 10,
             .offset_y = -5,
+            .pivot = .center,
         };
 
         try expect.equal(render.offset_x, 10);

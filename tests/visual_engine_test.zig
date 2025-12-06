@@ -38,7 +38,7 @@ pub const VisualEngineAnimationTests = struct {
     }
 
     test "SpriteConfig defaults" {
-        const config = gfx.visual_engine.SpriteConfig{};
+        const config = gfx.visual_engine.SpriteConfig{ .pivot = .center };
         try expect.equal(config.x, 0);
         try expect.equal(config.y, 0);
         try expect.equal(config.scale, 1.0);
@@ -59,7 +59,7 @@ pub const VisualEngineAnimationTests = struct {
     }
 
     test "SpriteConfig tint defaults" {
-        const config = gfx.visual_engine.SpriteConfig{};
+        const config = gfx.visual_engine.SpriteConfig{ .pivot = .center };
         try expect.equal(config.tint.r, 255);
         try expect.equal(config.tint.g, 255);
         try expect.equal(config.tint.b, 255);

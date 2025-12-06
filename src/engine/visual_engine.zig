@@ -39,11 +39,13 @@ const renderer_mod = @import("../renderer/renderer.zig");
 const texture_manager_mod = @import("../texture/texture_manager.zig");
 const camera_mod = @import("../camera/camera.zig");
 const animation_def = @import("../animation_def.zig");
+const components = @import("../components/components.zig");
 
 pub const SpriteId = sprite_storage.SpriteId;
 pub const Position = sprite_storage.Position;
 pub const ZIndex = sprite_storage.ZIndex;
 pub const AnimationInfo = animation_def.AnimationInfo;
+pub const Pivot = components.Pivot;
 
 /// Maximum length for sprite names stored in InternalSpriteData
 pub const max_sprite_name_len: usize = 64;
@@ -100,6 +102,12 @@ pub const SpriteConfig = struct {
     offset_y: f32 = 0,
     /// Tint color for the sprite. Accepts a Color struct.
     tint: ColorConfig = .{ .r = 255, .g = 255, .b = 255, .a = 255 },
+    /// Pivot point for positioning and rotation (required)
+    pivot: Pivot,
+    /// Custom pivot X coordinate (0.0-1.0), used when pivot == .custom
+    pivot_x: f32 = 0.5,
+    /// Custom pivot Y coordinate (0.0-1.0), used when pivot == .custom
+    pivot_y: f32 = 0.5,
 };
 
 /// Internal sprite data with rendering info
@@ -117,6 +125,11 @@ const InternalSpriteData = struct {
     visible: bool = true,
     offset_x: f32 = 0,
     offset_y: f32 = 0,
+
+    // Pivot point (internal default for array initialization, always set from config)
+    pivot: Pivot = .center,
+    pivot_x: f32 = 0.5,
+    pivot_y: f32 = 0.5,
 
     // Tint color (RGBA)
     tint_r: u8 = 255,
@@ -288,6 +301,9 @@ pub fn VisualEngineWith(comptime BackendType: type, comptime max_sprites: usize)
                 .visible = config.visible,
                 .offset_x = config.offset_x,
                 .offset_y = config.offset_y,
+                .pivot = config.pivot,
+                .pivot_x = config.pivot_x,
+                .pivot_y = config.pivot_y,
                 .tint_r = config.tint.r,
                 .tint_g = config.tint.g,
                 .tint_b = config.tint.b,
@@ -376,6 +392,28 @@ pub fn VisualEngineWith(comptime BackendType: type, comptime max_sprites: usize)
             self.storage.sprites[id.index].tint_b = b;
             self.storage.sprites[id.index].tint_a = a;
             return true;
+        }
+
+        /// Set sprite pivot point using a Pivot enum value
+        pub fn setPivot(self: *Self, id: SpriteId, pivot: Pivot) bool {
+            if (!self.isValid(id)) return false;
+            self.storage.sprites[id.index].pivot = pivot;
+            return true;
+        }
+
+        /// Set custom pivot coordinates (0.0-1.0). Also sets pivot to .custom.
+        pub fn setPivotCustom(self: *Self, id: SpriteId, pivot_x: f32, pivot_y: f32) bool {
+            if (!self.isValid(id)) return false;
+            self.storage.sprites[id.index].pivot = .custom;
+            self.storage.sprites[id.index].pivot_x = pivot_x;
+            self.storage.sprites[id.index].pivot_y = pivot_y;
+            return true;
+        }
+
+        /// Get the pivot point of a sprite
+        pub fn getPivot(self: *const Self, id: SpriteId) ?Pivot {
+            if (!self.isValid(id)) return null;
+            return self.storage.sprites[id.index].pivot;
         }
 
         pub fn setSpriteName(self: *Self, id: SpriteId, name: []const u8) bool {
@@ -655,6 +693,9 @@ pub fn VisualEngineWith(comptime BackendType: type, comptime max_sprites: usize)
                     .tint = tint,
                     .flip_x = sprite.flip_x,
                     .flip_y = sprite.flip_y,
+                    .pivot = sprite.pivot,
+                    .pivot_x = sprite.pivot_x,
+                    .pivot_y = sprite.pivot_y,
                 };
 
                 // Viewport culling - skip if sprite is outside camera view

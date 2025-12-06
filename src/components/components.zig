@@ -13,6 +13,49 @@ const raylib_backend = @import("../backend/raylib_backend.zig");
 /// Default backend for backwards compatibility
 pub const DefaultBackend = backend_mod.Backend(raylib_backend.RaylibBackend);
 
+/// Pivot point (anchor) for sprite positioning and rotation.
+/// The pivot determines which point of the sprite is placed at the (x, y) position
+/// and serves as the center of rotation.
+pub const Pivot = enum {
+    center, // (0.5, 0.5) - default, center of sprite
+    top_left, // (0.0, 0.0) - top-left corner
+    top_center, // (0.5, 0.0) - top edge center
+    top_right, // (1.0, 0.0) - top-right corner
+    center_left, // (0.0, 0.5) - left edge center
+    center_right, // (1.0, 0.5) - right edge center
+    bottom_left, // (0.0, 1.0) - bottom-left corner
+    bottom_center, // (0.5, 1.0) - bottom edge center (feet position)
+    bottom_right, // (1.0, 1.0) - bottom-right corner
+    custom, // Use pivot_x, pivot_y values (0.0-1.0)
+
+    /// Get the normalized pivot coordinates (0.0-1.0) for this pivot type.
+    /// For custom pivots, use the provided values.
+    pub fn getNormalized(self: Pivot, custom_x: f32, custom_y: f32) struct { x: f32, y: f32 } {
+        return switch (self) {
+            .center => .{ .x = 0.5, .y = 0.5 },
+            .top_left => .{ .x = 0.0, .y = 0.0 },
+            .top_center => .{ .x = 0.5, .y = 0.0 },
+            .top_right => .{ .x = 1.0, .y = 0.0 },
+            .center_left => .{ .x = 0.0, .y = 0.5 },
+            .center_right => .{ .x = 1.0, .y = 0.5 },
+            .bottom_left => .{ .x = 0.0, .y = 1.0 },
+            .bottom_center => .{ .x = 0.5, .y = 1.0 },
+            .bottom_right => .{ .x = 1.0, .y = 1.0 },
+            .custom => .{ .x = custom_x, .y = custom_y },
+        };
+    }
+
+    /// Calculate the origin offset for rendering based on sprite dimensions.
+    /// Returns the offset from top-left corner to the pivot point.
+    pub fn getOrigin(self: Pivot, width: f32, height: f32, custom_x: f32, custom_y: f32) struct { x: f32, y: f32 } {
+        const normalized = self.getNormalized(custom_x, custom_y);
+        return .{
+            .x = width * normalized.x,
+            .y = height * normalized.y,
+        };
+    }
+};
+
 /// Default Color type (raylib) for backwards compatibility
 pub const Color = DefaultBackend.Color;
 
@@ -94,6 +137,12 @@ pub fn SpriteWith(comptime BackendType: type) type {
         /// Offset from entity position for rendering
         offset_x: f32 = 0,
         offset_y: f32 = 0,
+        /// Pivot point for positioning and rotation
+        pivot: Pivot,
+        /// Custom pivot X coordinate (0.0-1.0), used when pivot == .custom
+        pivot_x: f32 = 0.5,
+        /// Custom pivot Y coordinate (0.0-1.0), used when pivot == .custom
+        pivot_y: f32 = 0.5,
     };
 }
 
@@ -121,6 +170,12 @@ pub fn RenderWith(comptime BackendType: type) type {
         flip_x: bool = false,
         /// Flip vertically
         flip_y: bool = false,
+        /// Pivot point for positioning and rotation
+        pivot: Pivot,
+        /// Custom pivot X coordinate (0.0-1.0), used when pivot == .custom
+        pivot_x: f32 = 0.5,
+        /// Custom pivot Y coordinate (0.0-1.0), used when pivot == .custom
+        pivot_y: f32 = 0.5,
     };
 }
 
@@ -215,6 +270,12 @@ pub fn AnimationWith(comptime AnimType: type, comptime BackendType: type) type {
         /// Offset from entity position for rendering
         offset_x: f32 = 0,
         offset_y: f32 = 0,
+        /// Pivot point for positioning and rotation
+        pivot: Pivot,
+        /// Custom pivot X coordinate (0.0-1.0), used when pivot == .custom
+        pivot_x: f32 = 0.5,
+        /// Custom pivot Y coordinate (0.0-1.0), used when pivot == .custom
+        pivot_y: f32 = 0.5,
         /// Callback when animation completes (for non-looping)
         on_complete: ?*const fn () void = null,
         /// Entity-specific sprite variant (e.g., "m_bald", "w_blonde", "thief")
@@ -228,6 +289,7 @@ pub fn AnimationWith(comptime AnimType: type, comptime BackendType: type) type {
                 .frame = 0,
                 .elapsed_time = 0,
                 .playing = true,
+                .pivot = .center,
             };
         }
 
@@ -239,6 +301,7 @@ pub fn AnimationWith(comptime AnimType: type, comptime BackendType: type) type {
                 .elapsed_time = 0,
                 .playing = true,
                 .sprite_variant = variant,
+                .pivot = .center,
             };
         }
 
@@ -250,6 +313,7 @@ pub fn AnimationWith(comptime AnimType: type, comptime BackendType: type) type {
                 .elapsed_time = 0,
                 .playing = true,
                 .z_index = z_index,
+                .pivot = .center,
             };
         }
 

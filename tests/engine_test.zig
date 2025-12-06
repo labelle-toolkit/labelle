@@ -56,7 +56,7 @@ pub const PositionTests = struct {
 
 pub const SpriteTests = struct {
     test "Sprite default values" {
-        const sprite = gfx.Sprite{ .name = "test" };
+        const sprite = gfx.Sprite{ .name = "test", .pivot = .center };
 
         try expect.equal(sprite.z_index, 0);
         try expect.equal(sprite.scale, 1.0);
@@ -76,6 +76,7 @@ pub const SpriteTests = struct {
             .flip_x = true,
             .offset_x = 10,
             .offset_y = -5,
+            .pivot = .bottom_center,
         };
 
         try expect.toBeTrue(std.mem.eql(u8, sprite.name, "player_idle"));

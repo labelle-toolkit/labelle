@@ -100,6 +100,7 @@ pub const Render = components.Render;
 pub const RenderWith = components.RenderWith;
 pub const SpriteLocation = components.SpriteLocation;
 pub const Color = components.ColorHelpers;
+pub const Pivot = components.Pivot;
 
 // Generic animation types - users provide their own enum with config()
 pub const Animation = components.Animation;
@@ -195,6 +196,7 @@ pub fn withBackend(comptime Impl: type) type {
         pub const AnimConfig = components.AnimConfig;
         pub const SpriteLocation = components.SpriteLocation;
         pub const Color = B.Color;
+        pub const Pivot = components.Pivot;
 
         // Animation
         pub fn AnimationT(comptime AnimType: type) type {

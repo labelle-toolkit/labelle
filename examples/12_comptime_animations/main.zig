@@ -74,6 +74,7 @@ pub fn main() !void {
         .y = 300,
         .z_index = ZIndex.characters,
         .scale = 4.0,
+        .pivot = .bottom_center,
     });
 
     // Track current animation name for state management

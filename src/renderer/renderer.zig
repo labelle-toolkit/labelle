@@ -32,6 +32,7 @@ const components = @import("../components/components.zig");
 const Render = components.Render;
 const Animation = components.Animation;
 const SpriteLocation = components.SpriteLocation;
+const Pivot = components.Pivot;
 
 const texture_manager_mod = @import("../texture/texture_manager.zig");
 const sprite_atlas_mod = @import("../texture/sprite_atlas.zig");
@@ -171,8 +172,9 @@ pub fn RendererWith(comptime BackendType: type) type {
 
             const dest_rect = BackendType.rectangle(draw_x, draw_y, dest_width, dest_height);
 
-            // Origin for rotation
-            const origin = BackendType.vector2(dest_width / 2, dest_height / 2);
+            // Origin for rotation and positioning based on pivot
+            const pivot_origin = options.pivot.getOrigin(dest_width, dest_height, options.pivot_x, options.pivot_y);
+            const origin = BackendType.vector2(pivot_origin.x, pivot_origin.y);
 
             // Calculate final rotation
             // If sprite is rotated in atlas, we need to counter-rotate by -90°
@@ -200,6 +202,12 @@ pub fn RendererWith(comptime BackendType: type) type {
             tint: BackendType.Color = BackendType.white,
             flip_x: bool = false,
             flip_y: bool = false,
+            /// Pivot point for positioning and rotation
+            pivot: Pivot,
+            /// Custom pivot X coordinate (0.0-1.0), used when pivot == .custom
+            pivot_x: f32 = 0.5,
+            /// Custom pivot Y coordinate (0.0-1.0), used when pivot == .custom
+            pivot_y: f32 = 0.5,
         };
 
         /// Begin camera mode for world rendering
@@ -275,13 +283,11 @@ pub fn RendererWith(comptime BackendType: type) type {
                 height = @as(f32, @floatFromInt(sprite.height)) * options.scale;
             }
 
-            // Calculate sprite bounds in world space
-            // Sprites are drawn centered at position (origin is center)
-            const half_width = width / 2.0;
-            const half_height = height / 2.0;
-            
-            const sprite_x = x + options.offset_x - half_width;
-            const sprite_y = y + options.offset_y - half_height;
+            // Calculate sprite bounds in world space based on pivot
+            const pivot_origin = options.pivot.getOrigin(width, height, options.pivot_x, options.pivot_y);
+
+            const sprite_x = x + options.offset_x - pivot_origin.x;
+            const sprite_y = y + options.offset_y - pivot_origin.y;
 
             // Add trim offset if sprite is trimmed
             var final_x = sprite_x;
