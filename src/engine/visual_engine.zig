@@ -133,12 +133,12 @@ pub const ShapeConfig = struct {
     width: f32 = 0,
     height: f32 = 0,
 
-    // Line properties (end point relative to position)
+    // Line properties (end point in world coordinates)
     end_x: f32 = 0,
     end_y: f32 = 0,
     thickness: f32 = 1,
 
-    // Triangle properties (p2 and p3 relative to position/p1)
+    // Triangle properties (p2 and p3 in world coordinates)
     p2_x: f32 = 0,
     p2_y: f32 = 0,
     p3_x: f32 = 0,
@@ -587,8 +587,9 @@ pub fn VisualEngineWithShapes(comptime BackendType: type, comptime max_sprites: 
                 .radius = config.radius,
                 .width = config.width,
                 .height = config.height,
-                .x2 = config.end_x,
-                .y2 = config.end_y,
+                // x2/y2 used for line end point or triangle's second vertex
+                .x2 = if (config.shape_type == .line) config.end_x else config.p2_x,
+                .y2 = if (config.shape_type == .line) config.end_y else config.p2_y,
                 .thickness = config.thickness,
                 .x3 = config.p3_x,
                 .y3 = config.p3_y,
