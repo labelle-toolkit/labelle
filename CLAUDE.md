@@ -28,7 +28,7 @@ labelle/
 │   ├── backend/                # Backend abstraction (raylib, sokol, mock)
 │   └── tools/                  # CLI tools (converter)
 ├── tests/                      # Test files (zspec)
-├── examples/                   # Example applications (01-14)
+├── examples/                   # Example applications (01-16)
 ├── fixtures/                   # Test assets (sprite atlases, .zon files)
 └── .github/workflows/          # CI configuration
 ```
@@ -62,6 +62,54 @@ while (engine.isRunning()) {
     engine.setPosition(player, new_x, new_y);
     engine.beginFrame();
     engine.tick(dt);
+    engine.endFrame();
+}
+```
+
+### RetainedEngine (EntityId-based)
+
+For ECS integration, use `RetainedEngine` which accepts external entity IDs:
+
+```zig
+const gfx = @import("labelle");
+const RetainedEngine = gfx.RetainedEngine;
+const EntityId = gfx.EntityId;
+
+var engine = try RetainedEngine.init(allocator, .{
+    .window = .{ .width = 800, .height = 600, .title = "My Game" },
+    .clear_color = .{ .r = 30, .g = 30, .b = 40 },
+});
+defer engine.deinit();
+
+// Load atlas
+try engine.loadAtlas("sprites", "assets/sprites.json", "assets/sprites.png");
+
+// Create entities with external IDs (e.g., from your ECS)
+const player_id = EntityId.from(1);
+engine.createSprite(player_id, .{
+    .sprite_name = "player_idle",
+    .scale = 2.0,
+    .z_index = 10,
+}, .{ .x = 400, .y = 300 });
+
+// Create shapes
+const circle_id = EntityId.from(2);
+engine.createShape(circle_id, gfx.ShapeVisual.circle(30), .{ .x = 200, .y = 200 });
+
+// Game loop
+while (engine.isRunning()) {
+    // Update positions
+    engine.updatePosition(player_id, .{ .x = new_x, .y = new_y });
+
+    // Update visuals
+    if (engine.getShape(circle_id)) |shape| {
+        var updated = shape;
+        updated.rotation += engine.getDeltaTime() * 45;
+        engine.updateShape(circle_id, updated);
+    }
+
+    engine.beginFrame();
+    engine.render();  // No arguments - uses internal storage
     engine.endFrame();
 }
 ```
@@ -397,7 +445,7 @@ zig build test
 # Run specific example
 zig build run-example-01
 zig build run-example-02
-# ... through run-example-15
+# ... through run-example-16
 
 # Run converter tool
 zig build converter -- input.json -o output.zon
@@ -439,6 +487,7 @@ pub const AnimationTests = struct {
 | 13_pivot_points | Pivot point/anchor support |
 | 14_tile_map | Tiled Map Editor (.tmx) support |
 | 15_shapes | Shape primitives (circle, rect, line, triangle, polygon) |
+| 16_retained_engine | RetainedEngine with EntityId-based API |
 
 ## Common Patterns
 
@@ -485,7 +534,7 @@ var engine = try MyGfx.VisualEngine.init(...);
 
 - **CI workflow**: Builds, tests, and runs examples to capture screenshots
 - **Coverage workflow**: Runs test coverage
-- Screenshots are generated for examples 01-15 and compared in PRs
+- Screenshots are generated for examples 01-16 and compared in PRs
 
 ## Important Notes
 
@@ -503,4 +552,4 @@ var engine = try MyGfx.VisualEngine.init(...);
 1. Run `zig build test` to ensure tests pass
 2. Run `zig build` to check compilation
 3. Update examples if API changes
-4. CI expects all 15 example screenshots to be generated
+4. CI expects all 16 example screenshots to be generated

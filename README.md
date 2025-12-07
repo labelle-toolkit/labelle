@@ -13,6 +13,7 @@ A 2D graphics library for Zig games using [raylib](https://www.raylib.com/) for 
 ## Features
 
 - **Self-Contained Visual Engine** - Engine owns sprites internally via opaque handles
+- **Retained Mode Engine** - EntityId-based API for ECS integration (RetainedEngine)
 - **Sprite Rendering** - Load and draw sprites from texture atlases
 - **Animation System** - Frame-based animations with customizable types
 - **Comptime Animation Definitions** - Load .zon files at compile time with validation
@@ -24,7 +25,7 @@ A 2D graphics library for Zig games using [raylib](https://www.raylib.com/) for 
 - **Viewport Culling** - Automatic frustum culling skips off-screen sprites for better performance
 - **Input/UI Helpers** - Static helpers for keyboard input and UI text rendering
 - **Visual Effects** - Fade, temporal fade, flash effects
-- **Z-Index Layering** - Proper draw order for 2D games
+- **Z-Index Bucket Optimization** - O(n) rendering via pre-sorted buckets (no per-frame sorting)
 - **Backend Abstraction** - Support for raylib (default) and sokol backends
 - **Scoped Logging** - Configurable logging following labelle-toolkit pattern
 - **Single Sprite Loading** - Load individual images without atlas (SingleSprite API)
@@ -114,6 +115,36 @@ defer engine.deinit();
 try engine.loadAtlasComptime("characters", character_frames, "assets/characters.png");
 ```
 
+### RetainedEngine (EntityId-based)
+
+For ECS integration, use `RetainedEngine` with external entity IDs:
+
+```zig
+const gfx = @import("labelle");
+const RetainedEngine = gfx.RetainedEngine;
+const EntityId = gfx.EntityId;
+
+var engine = try RetainedEngine.init(allocator, .{
+    .window = .{ .width = 800, .height = 600, .title = "My Game" },
+});
+defer engine.deinit();
+
+// Create entities with external IDs
+const player_id = EntityId.from(1);
+engine.createSprite(player_id, .{
+    .sprite_name = "player_idle",
+    .z_index = 10,
+}, .{ .x = 400, .y = 300 });
+
+// Game loop
+while (engine.isRunning()) {
+    engine.updatePosition(player_id, .{ .x = new_x, .y = new_y });
+    engine.beginFrame();
+    engine.render();  // No arguments needed
+    engine.endFrame();
+}
+```
+
 ## Examples
 
 Run examples with:
@@ -163,6 +194,9 @@ zig build run-example-14
 
 # Shape primitives
 zig build run-example-15
+
+# Retained engine (EntityId-based)
+zig build run-example-16
 ```
 
 ## API Overview
@@ -260,7 +294,7 @@ labelle/
 │   ├── backend/                # Backend abstraction
 │   └── tools/                  # CLI tools (converter)
 ├── tests/                      # Test files (zspec)
-├── examples/                   # Example applications (01-15)
+├── examples/                   # Example applications (01-16)
 └── fixtures/                   # Test assets
 ```
 
