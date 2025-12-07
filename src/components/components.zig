@@ -529,3 +529,133 @@ pub fn AnimationsArray(comptime AnimType: type) type {
 
 /// Convenience alias for AnimationsArray with default animation types
 pub const DefaultAnimationsArray = AnimationsArray(DefaultAnimationType);
+
+// ==================== Shape Components ====================
+
+/// Shape type enumeration for primitive shapes
+pub const ShapeType = enum {
+    circle,
+    rectangle,
+    line,
+    triangle,
+    polygon,
+};
+
+/// Shape component for rendering primitive shapes.
+/// Each shape has a single type and the relevant properties for that type.
+/// Uses generic color type parameterized by backend.
+pub fn ShapeWith(comptime BackendType: type) type {
+    return struct {
+        const Self = @This();
+
+        /// The type of shape to render
+        shape_type: ShapeType,
+
+        // Common properties
+        /// X position (center for circle/polygon, top-left for rectangle, start for line)
+        x: f32 = 0,
+        /// Y position (center for circle/polygon, top-left for rectangle, start for line)
+        y: f32 = 0,
+        /// Z-index for draw order (higher = rendered on top)
+        z_index: u8 = 0,
+        /// Shape color
+        color: BackendType.Color = BackendType.white,
+        /// Whether the shape is filled (true) or just an outline (false)
+        filled: bool = true,
+        /// Rotation in degrees (for rectangle, triangle, polygon)
+        rotation: f32 = 0,
+        /// Whether the shape is visible
+        visible: bool = true,
+
+        // Circle properties
+        /// Radius for circle shapes
+        radius: f32 = 0,
+
+        // Rectangle properties
+        /// Width for rectangle shapes
+        width: f32 = 0,
+        /// Height for rectangle shapes
+        height: f32 = 0,
+
+        // Line properties
+        /// End X position for line shapes
+        x2: f32 = 0,
+        /// End Y position for line shapes
+        y2: f32 = 0,
+        /// Line thickness
+        thickness: f32 = 1,
+
+        // Triangle properties (uses x,y as first point)
+        /// Second point X for triangle
+        x3: f32 = 0,
+        /// Second point Y for triangle
+        y3: f32 = 0,
+        /// Third point X for triangle
+        x4: f32 = 0,
+        /// Third point Y for triangle
+        y4: f32 = 0,
+
+        // Polygon properties (regular polygon)
+        /// Number of sides for polygon
+        sides: i32 = 6,
+
+        /// Create a circle shape
+        pub fn circle(center_x: f32, center_y: f32, r: f32) Self {
+            return .{
+                .shape_type = .circle,
+                .x = center_x,
+                .y = center_y,
+                .radius = r,
+            };
+        }
+
+        /// Create a rectangle shape
+        pub fn rectangle(rect_x: f32, rect_y: f32, w: f32, h: f32) Self {
+            return .{
+                .shape_type = .rectangle,
+                .x = rect_x,
+                .y = rect_y,
+                .width = w,
+                .height = h,
+            };
+        }
+
+        /// Create a line shape
+        pub fn line(start_x: f32, start_y: f32, end_x: f32, end_y: f32) Self {
+            return .{
+                .shape_type = .line,
+                .x = start_x,
+                .y = start_y,
+                .x2 = end_x,
+                .y2 = end_y,
+            };
+        }
+
+        /// Create a triangle shape
+        pub fn triangle(x1: f32, y1: f32, x2_val: f32, y2_val: f32, x3_val: f32, y3_val: f32) Self {
+            return .{
+                .shape_type = .triangle,
+                .x = x1,
+                .y = y1,
+                .x2 = x2_val,
+                .y2 = y2_val,
+                .x3 = x3_val,
+                .y3 = y3_val,
+            };
+        }
+
+        /// Create a regular polygon shape
+        pub fn polygon(center_x: f32, center_y: f32, num_sides: i32, r: f32) Self {
+            return .{
+                .shape_type = .polygon,
+                .x = center_x,
+                .y = center_y,
+                .sides = num_sides,
+                .radius = r,
+            };
+        }
+    };
+}
+
+/// Shape component - default raylib backend for backwards compatibility
+pub const Shape = ShapeWith(DefaultBackend);
