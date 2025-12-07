@@ -28,6 +28,18 @@ pub fn TileMapRendererWith(comptime BackendType: type) type {
         const Self = @This();
         pub const Backend = BackendType;
 
+        /// Drawing options for tile layers (backend-specific)
+        pub const DrawOptions = struct {
+            /// Scale factor
+            scale: f32 = 1.0,
+            /// Additional X offset
+            offset_x: f32 = 0,
+            /// Additional Y offset
+            offset_y: f32 = 0,
+            /// Tint color
+            tint: BackendType.Color = BackendType.white,
+        };
+
         allocator: std.mem.Allocator,
         map: *const tmx.TileMap,
         /// Loaded tileset textures (keyed by tileset index)
@@ -79,7 +91,7 @@ pub fn TileMapRendererWith(comptime BackendType: type) type {
             layer_name: []const u8,
             camera_x: f32,
             camera_y: f32,
-            options: DrawOptions,
+            options: Self.DrawOptions,
         ) void {
             const layer = self.map.getLayer(layer_name) orelse return;
             self.drawLayerDirect(layer, camera_x, camera_y, options);
@@ -91,7 +103,7 @@ pub fn TileMapRendererWith(comptime BackendType: type) type {
             layer: *const tmx.TileLayer,
             camera_x: f32,
             camera_y: f32,
-            options: DrawOptions,
+            options: Self.DrawOptions,
         ) void {
             if (!layer.visible) return;
 
@@ -175,7 +187,7 @@ pub fn TileMapRendererWith(comptime BackendType: type) type {
             self: *Self,
             camera_x: f32,
             camera_y: f32,
-            options: DrawOptions,
+            options: Self.DrawOptions,
         ) void {
             for (self.map.tile_layers) |*layer| {
                 self.drawLayerDirect(layer, camera_x, camera_y, options);
@@ -183,35 +195,26 @@ pub fn TileMapRendererWith(comptime BackendType: type) type {
         }
 
         /// Find tileset index for a given GID
+        /// Iterates backwards since tilesets are sorted by firstgid,
+        /// returning early on the first match for better performance.
         fn findTilesetIndex(self: *Self, gid: u32) ?usize {
-            var result: ?usize = null;
-            var best_firstgid: u32 = 0;
-
-            for (self.map.tilesets, 0..) |*tileset, i| {
-                if (tileset.firstgid <= gid and tileset.firstgid > best_firstgid) {
-                    best_firstgid = tileset.firstgid;
-                    result = i;
+            var i = self.map.tilesets.len;
+            while (i > 0) {
+                i -= 1;
+                if (self.map.tilesets[i].firstgid <= gid) {
+                    return i;
                 }
             }
-            return result;
+            return null;
         }
     };
 }
-
-/// Drawing options for tile layers
-pub const DrawOptions = struct {
-    /// Scale factor
-    scale: f32 = 1.0,
-    /// Additional X offset
-    offset_x: f32 = 0,
-    /// Additional Y offset
-    offset_y: f32 = 0,
-    /// Tint color
-    tint: DefaultBackend.Color = DefaultBackend.white,
-};
 
 /// Default backend
 const DefaultBackend = backend_mod.Backend(raylib_backend.RaylibBackend);
 
 /// Default TileMapRenderer using raylib backend
 pub const TileMapRenderer = TileMapRendererWith(DefaultBackend);
+
+/// Default DrawOptions using raylib backend
+pub const DrawOptions = TileMapRenderer.DrawOptions;

@@ -246,11 +246,33 @@ pub const TileMap = struct {
         };
 
         var tilesets: std.ArrayListUnmanaged(Tileset) = .empty;
-        errdefer tilesets.deinit(allocator);
+        errdefer {
+            for (tilesets.items) |*ts| {
+                if (ts.name.len > 0) allocator.free(ts.name);
+                if (ts.image_source.len > 0) allocator.free(ts.image_source);
+            }
+            tilesets.deinit(allocator);
+        }
         var tile_layers: std.ArrayListUnmanaged(TileLayer) = .empty;
-        errdefer tile_layers.deinit(allocator);
+        errdefer {
+            for (tile_layers.items) |*layer| {
+                if (layer.name.len > 0) allocator.free(layer.name);
+                allocator.free(layer.data);
+            }
+            tile_layers.deinit(allocator);
+        }
         var object_layers: std.ArrayListUnmanaged(ObjectLayer) = .empty;
-        errdefer object_layers.deinit(allocator);
+        errdefer {
+            for (object_layers.items) |*layer| {
+                if (layer.name.len > 0) allocator.free(layer.name);
+                for (layer.objects) |*obj| {
+                    if (obj.name.len > 0) allocator.free(obj.name);
+                    if (obj.obj_type.len > 0) allocator.free(obj.obj_type);
+                }
+                allocator.free(layer.objects);
+            }
+            object_layers.deinit(allocator);
+        }
 
         var pos: usize = 0;
 
@@ -400,11 +422,7 @@ pub const TileMap = struct {
                     if (getAttr(img_attrs, "source")) |src| {
                         // Make path relative to the TMX file's directory
                         const tsx_dir = std.fs.path.dirname(source) orelse "";
-                        if (tsx_dir.len > 0) {
-                            tileset.image_source = try std.fs.path.join(allocator, &.{ tsx_dir, src });
-                        } else {
-                            tileset.image_source = try allocator.dupe(u8, src);
-                        }
+                        tileset.image_source = try std.fs.path.join(allocator, &.{ tsx_dir, src });
                     }
                     if (getAttr(img_attrs, "width")) |w| tileset.image_width = try std.fmt.parseInt(u32, w, 10);
                     if (getAttr(img_attrs, "height")) |h| tileset.image_height = try std.fmt.parseInt(u32, h, 10);
@@ -546,7 +564,13 @@ pub const TileMap = struct {
         if (getAttr(attrs, "offsety")) |oy| layer.offset_y = try std.fmt.parseFloat(f32, oy);
 
         var objects: std.ArrayListUnmanaged(MapObject) = .empty;
-        errdefer objects.deinit(allocator);
+        errdefer {
+            for (objects.items) |*obj| {
+                if (obj.name.len > 0) allocator.free(obj.name);
+                if (obj.obj_type.len > 0) allocator.free(obj.obj_type);
+            }
+            objects.deinit(allocator);
+        }
 
         // Parse object elements
         while (pos.* < content.len) {
