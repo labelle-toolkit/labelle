@@ -549,7 +549,8 @@ pub fn RetainedEngineWith(comptime BackendType: type) type {
 
         // ==================== Position Management ====================
 
-        /// Update position for any entity (sprite, shape, or text)
+        /// Update position for any entity (sprite, shape, or text).
+        /// Silently returns if the entity doesn't exist.
         pub fn updatePosition(self: *Self, id: EntityId, pos: Position) void {
             if (self.sprites.getPtr(id)) |entry| {
                 entry.position = pos;
@@ -565,6 +566,8 @@ pub fn RetainedEngineWith(comptime BackendType: type) type {
             }
         }
 
+        /// Get position for any entity (sprite, shape, or text).
+        /// Returns null if the entity doesn't exist.
         pub fn getPosition(self: *const Self, id: EntityId) ?Position {
             if (self.sprites.get(id)) |entry| {
                 return entry.position;
