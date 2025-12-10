@@ -57,6 +57,9 @@ export fn init() void {
         .logger = .{ .func = sokol.log.func },
     });
 
+    // Mark the sokol backend as initialized so drawing functions work
+    gfx.SokolBackend.markInitialized();
+
     // Setup clear color
     state.pass_action.colors[0] = .{
         .load_action = .CLEAR,
@@ -143,6 +146,8 @@ export fn frame() void {
 }
 
 export fn cleanup() void {
+    // Mark backend as uninitialized before shutdown
+    gfx.SokolBackend.markUninitialized();
     sgl.shutdown();
     sg.shutdown();
     std.debug.print("Sokol backend cleanup complete.\n", .{});

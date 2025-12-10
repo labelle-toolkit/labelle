@@ -3,8 +3,54 @@
 //! Implements the backend interface using sokol-zig bindings.
 //! Uses sokol_gfx for rendering and sokol_gl for immediate-mode 2D drawing.
 //!
-//! Note: This backend requires the application to handle window creation
-//! and the sokol setup/teardown lifecycle separately (typically via sokol_app).
+//! ## Important: Callback-Based Architecture Required
+//!
+//! Unlike the raylib backend, sokol requires a **callback-based architecture**
+//! using sokol_app. You CANNOT use a traditional polling-style main loop:
+//!
+//! ```zig
+//! // ❌ THIS WILL NOT WORK with sokol backend:
+//! var engine = try VisualEngine.init(allocator, config);
+//! while (engine.isRunning()) {
+//!     engine.update();
+//!     engine.render();
+//! }
+//! ```
+//!
+//! Instead, you must use sokol_app's callback pattern:
+//!
+//! ```zig
+//! // ✅ CORRECT approach for sokol:
+//! export fn init() void {
+//!     sg.setup(.{ .environment = sokol.glue.environment() });
+//!     sgl.setup(.{});
+//!     // Initialize your game state here
+//! }
+//!
+//! export fn frame() void {
+//!     sg.beginPass(.{ .action = pass_action, .swapchain = sokol.glue.swapchain() });
+//!     gfx.SokolBackend.beginDrawing();
+//!     // Render your game here
+//!     gfx.SokolBackend.endDrawing();
+//!     sg.endPass();
+//!     sg.commit();
+//! }
+//!
+//! pub fn main() !void {
+//!     sapp.run(.{
+//!         .init_cb = init,
+//!         .frame_cb = frame,
+//!         .cleanup_cb = cleanup,
+//!         .width = 800,
+//!         .height = 600,
+//!     });
+//! }
+//! ```
+//!
+//! This is because sokol_gfx and sokol_gl must be initialized AFTER sokol_app
+//! has created the graphics context, which only happens inside the init callback.
+//!
+//! See examples/09_sokol_backend for a complete working example.
 
 const std = @import("std");
 const sokol = @import("sokol");
@@ -16,6 +62,36 @@ const backend_mod = @import("backend.zig");
 
 /// Sokol backend implementation
 pub const SokolBackend = struct {
+    // Initialization state tracking
+    // sokol_gl must be initialized before calling sgl functions
+    threadlocal var sgl_initialized: bool = false;
+
+    /// Call this after sgl.setup() to enable SokolBackend drawing functions.
+    /// This is typically done in your sokol_app init callback.
+    ///
+    /// Example:
+    /// ```zig
+    /// export fn init() void {
+    ///     sg.setup(.{ .environment = sokol.glue.environment() });
+    ///     sgl.setup(.{});
+    ///     gfx.SokolBackend.markInitialized();  // Enable drawing
+    /// }
+    /// ```
+    pub fn markInitialized() void {
+        sgl_initialized = true;
+    }
+
+    /// Call this before sgl.shutdown() to prevent drawing after cleanup.
+    pub fn markUninitialized() void {
+        sgl_initialized = false;
+    }
+
+    /// Check if sokol_gl has been initialized.
+    /// Returns false until markInitialized() is called.
+    pub fn isInitialized() bool {
+        return sgl_initialized;
+    }
+
     // Types
     pub const Texture = struct {
         img: sg.Image,
@@ -331,14 +407,24 @@ pub const SokolBackend = struct {
     }
 
     // Optional functions for Engine API compatibility
+    //
+    // NOTE: Many of these functions are no-ops or return default values because
+    // sokol uses a callback-based architecture where the application controls
+    // the main loop and window lifecycle.
 
     /// Initialize window (via sokol_app - usually handled externally)
+    ///
+    /// WARNING: This is a no-op in the sokol backend!
+    /// sokol_app handles window creation through `sapp.run()`.
+    /// The window size and title must be specified in the `sapp.Desc` struct
+    /// passed to `sapp.run()`, not through this function.
     pub fn initWindow(width: i32, height: i32, title: [*:0]const u8) void {
         // sokol_app handles window creation through the main entry point
         // This is a no-op as window is created before sokol_gfx setup
         _ = width;
         _ = height;
         _ = title;
+        std.debug.print("WARNING: SokolBackend.initWindow() is a no-op. Window creation is handled by sokol_app.\n", .{});
     }
 
     /// Close window
@@ -379,8 +465,34 @@ pub const SokolBackend = struct {
     }
 
     /// Begin drawing frame
+    ///
+    /// IMPORTANT: This function requires sokol_gl to be initialized first.
+    /// Call `markInitialized()` after `sgl.setup()` in your init callback.
+    ///
+    /// If you see an assertion failure here, it means you're trying to use
+    /// the sokol backend with a polling-style main loop, which is not supported.
+    /// See the module documentation for the correct callback-based approach.
     pub fn beginDrawing() void {
-        // Typically sokol_gfx pass is begun in the frame callback
+        // Check that sokol_gl has been initialized
+        if (!sgl_initialized) {
+            std.debug.print(
+                \\
+                \\ERROR: SokolBackend.beginDrawing() called before initialization!
+                \\
+                \\The sokol backend requires a callback-based architecture using sokol_app.
+                \\You cannot use a polling-style main loop like raylib.
+                \\
+                \\To fix this:
+                \\1. Use sokol_app's callback pattern (init_cb, frame_cb, cleanup_cb)
+                \\2. Call sg.setup() and sgl.setup() in your init callback
+                \\3. Call SokolBackend.markInitialized() after sgl.setup()
+                \\
+                \\See examples/09_sokol_backend for a working example.
+                \\
+            , .{});
+            @panic("SokolBackend not initialized. See error message above.");
+        }
+
         // sgl setup for the frame
         sgl.defaults();
         sgl.matrixModeProjection();
