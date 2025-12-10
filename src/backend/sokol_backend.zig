@@ -137,7 +137,9 @@ pub const SokolBackend = struct {
 
         // Enable texture
         sgl.enableTexture();
-        sgl.texture(texture.img, texture.smp);
+        // Create a default view from the image (sokol-zig 0.1.0+ uses View instead of Image)
+        const view = sg.View{ .id = texture.img.id };
+        sgl.texture(view, texture.smp);
 
         // Apply rotation if needed
         if (rotation != 0) {
