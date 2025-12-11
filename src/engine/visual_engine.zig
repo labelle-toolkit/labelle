@@ -1048,18 +1048,18 @@ pub fn VisualEngineWithShapes(comptime BackendType: type, comptime max_sprites: 
                 }
                 BackendType.beginMode2D(cam.toBackend());
 
-                // Render all visuals for this camera
+                // Render all visuals for this camera with per-camera culling
                 var iter = self.z_buckets.iterator();
                 while (iter.next()) |item| {
                     switch (item) {
                         .sprite => |id| {
                             if (self.isValid(id) and self.storage.items[id.index].visible) {
-                                self.renderSprite(id);
+                                self.renderSpriteForCamera(id, cam);
                             }
                         },
                         .shape => |id| {
                             if (self.isShapeValid(id) and self.shape_storage.items[id.index].visible) {
-                                self.renderShape(id);
+                                self.renderShapeForCamera(id, cam);
                             }
                         },
                     }
@@ -1092,6 +1092,43 @@ pub fn VisualEngineWithShapes(comptime BackendType: type, comptime max_sprites: 
 
             // Viewport culling - skip if sprite is outside camera view
             if (!self.renderer.shouldRenderSprite(
+                sprite.getSpriteName(),
+                sprite.x,
+                sprite.y,
+                draw_opts,
+            )) {
+                return;
+            }
+
+            self.renderer.drawSprite(
+                sprite.getSpriteName(),
+                sprite.x,
+                sprite.y,
+                draw_opts,
+            );
+        }
+
+        /// Render sprite with culling against a specific camera (for multi-camera mode)
+        fn renderSpriteForCamera(self: *Self, id: SpriteId, cam: *Camera) void {
+            const sprite = &self.storage.items[id.index];
+            const tint = BackendType.color(sprite.tint_r, sprite.tint_g, sprite.tint_b, sprite.tint_a);
+
+            const draw_opts: Renderer.DrawOptions = .{
+                .offset_x = sprite.offset_x,
+                .offset_y = sprite.offset_y,
+                .scale = sprite.scale,
+                .rotation = sprite.rotation,
+                .tint = tint,
+                .flip_x = sprite.flip_x,
+                .flip_y = sprite.flip_y,
+                .pivot = sprite.pivot,
+                .pivot_x = sprite.pivot_x,
+                .pivot_y = sprite.pivot_y,
+            };
+
+            // Viewport culling against the specific camera
+            if (!self.renderer.shouldRenderSpriteForCamera(
+                cam,
                 sprite.getSpriteName(),
                 sprite.x,
                 sprite.y,
@@ -1149,6 +1186,98 @@ pub fn VisualEngineWithShapes(comptime BackendType: type, comptime max_sprites: 
                     }
                 },
             }
+        }
+
+        /// Render shape with culling against a specific camera (for multi-camera mode)
+        fn renderShapeForCamera(self: *Self, id: ShapeId, cam: *Camera) void {
+            const shape = &self.shape_storage.items[id.index];
+
+            // Calculate shape bounds for culling
+            const bounds = self.getShapeBounds(shape);
+            const viewport = cam.getViewport();
+
+            // Skip if shape is outside camera viewport
+            if (!viewport.overlapsRect(bounds.x, bounds.y, bounds.width, bounds.height)) {
+                return;
+            }
+
+            // Render the shape
+            const col = BackendType.color(shape.color_r, shape.color_g, shape.color_b, shape.color_a);
+
+            switch (shape.shape_type) {
+                .circle => {
+                    if (shape.filled) {
+                        BackendType.drawCircle(shape.x, shape.y, shape.radius, col);
+                    } else {
+                        BackendType.drawCircleLines(shape.x, shape.y, shape.radius, col);
+                    }
+                },
+                .rectangle => {
+                    if (shape.filled) {
+                        BackendType.drawRectangleV(shape.x, shape.y, shape.width, shape.height, col);
+                    } else {
+                        BackendType.drawRectangleLinesV(shape.x, shape.y, shape.width, shape.height, col);
+                    }
+                },
+                .line => {
+                    if (shape.thickness > 1) {
+                        BackendType.drawLineEx(shape.x, shape.y, shape.x2, shape.y2, shape.thickness, col);
+                    } else {
+                        BackendType.drawLine(shape.x, shape.y, shape.x2, shape.y2, col);
+                    }
+                },
+                .triangle => {
+                    if (shape.filled) {
+                        BackendType.drawTriangle(shape.x, shape.y, shape.x2, shape.y2, shape.x3, shape.y3, col);
+                    } else {
+                        BackendType.drawTriangleLines(shape.x, shape.y, shape.x2, shape.y2, shape.x3, shape.y3, col);
+                    }
+                },
+                .polygon => {
+                    if (shape.filled) {
+                        BackendType.drawPoly(shape.x, shape.y, shape.sides, shape.radius, shape.rotation, col);
+                    } else {
+                        BackendType.drawPolyLines(shape.x, shape.y, shape.sides, shape.radius, shape.rotation, col);
+                    }
+                },
+            }
+        }
+
+        /// Calculate the bounding box of a shape for culling
+        fn getShapeBounds(self: *const Self, shape: *const InternalShapeData) struct { x: f32, y: f32, width: f32, height: f32 } {
+            _ = self;
+            return switch (shape.shape_type) {
+                .circle => .{
+                    .x = shape.x - shape.radius,
+                    .y = shape.y - shape.radius,
+                    .width = shape.radius * 2,
+                    .height = shape.radius * 2,
+                },
+                .rectangle => .{
+                    .x = shape.x,
+                    .y = shape.y,
+                    .width = shape.width,
+                    .height = shape.height,
+                },
+                .line => .{
+                    .x = @min(shape.x, shape.x2),
+                    .y = @min(shape.y, shape.y2),
+                    .width = @abs(shape.x2 - shape.x) + shape.thickness,
+                    .height = @abs(shape.y2 - shape.y) + shape.thickness,
+                },
+                .triangle => .{
+                    .x = @min(shape.x, @min(shape.x2, shape.x3)),
+                    .y = @min(shape.y, @min(shape.y2, shape.y3)),
+                    .width = @max(shape.x, @max(shape.x2, shape.x3)) - @min(shape.x, @min(shape.x2, shape.x3)),
+                    .height = @max(shape.y, @max(shape.y2, shape.y3)) - @min(shape.y, @min(shape.y2, shape.y3)),
+                },
+                .polygon => .{
+                    .x = shape.x - shape.radius,
+                    .y = shape.y - shape.radius,
+                    .width = shape.radius * 2,
+                    .height = shape.radius * 2,
+                },
+            };
         }
 
         // ==================== Atlas Management ====================

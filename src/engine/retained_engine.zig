@@ -727,14 +727,25 @@ pub fn RetainedEngineWith(comptime BackendType: type) type {
                 }
                 BackendType.beginMode2D(cam.toBackend());
 
-                // Render all visuals for this camera
+                // Get viewport for culling
+                const viewport = cam.getViewport();
+
+                // Render all visuals for this camera with per-camera culling
                 var iter = self.z_buckets.iterator();
                 while (iter.next()) |item| {
                     if (!self.isVisible(item)) continue;
 
                     switch (item.item_type) {
-                        .sprite => self.renderSprite(item.entity_id),
-                        .shape => self.renderShape(item.entity_id),
+                        .sprite => {
+                            if (self.shouldRenderSpriteInViewport(item.entity_id, viewport)) {
+                                self.renderSprite(item.entity_id);
+                            }
+                        },
+                        .shape => {
+                            if (self.shouldRenderShapeInViewport(item.entity_id, viewport)) {
+                                self.renderShape(item.entity_id);
+                            }
+                        },
                         .text => self.renderText(item.entity_id),
                     }
                 }
@@ -745,6 +756,73 @@ pub fn RetainedEngineWith(comptime BackendType: type) type {
                     BackendType.endScissorMode();
                 }
             }
+        }
+
+        /// Check if sprite should be rendered in the given viewport
+        fn shouldRenderSpriteInViewport(self: *Self, id: EntityId, viewport: Camera.ViewportRect) bool {
+            const entry = self.sprites.get(id) orelse return false;
+            const visual = entry.visual;
+            const pos = entry.position;
+
+            // Get sprite dimensions
+            if (visual.sprite_name.len > 0) {
+                if (self.texture_manager.findSprite(visual.sprite_name)) |result| {
+                    const sprite = result.sprite;
+                    const scaled_width = @as(f32, @floatFromInt(sprite.width)) * visual.scale;
+                    const scaled_height = @as(f32, @floatFromInt(sprite.height)) * visual.scale;
+
+                    // Sprite is centered, so calculate bounds
+                    const half_w = scaled_width / 2.0;
+                    const half_h = scaled_height / 2.0;
+                    return viewport.overlapsRect(pos.x - half_w, pos.y - half_h, scaled_width, scaled_height);
+                }
+            }
+            return true; // Render if no sprite data found
+        }
+
+        const ShapeBounds = struct { x: f32, y: f32, w: f32, h: f32 };
+
+        /// Check if shape should be rendered in the given viewport
+        fn shouldRenderShapeInViewport(self: *const Self, id: EntityId, viewport: Camera.ViewportRect) bool {
+            const entry = self.shapes.get(id) orelse return false;
+            const visual = entry.visual;
+            const pos = entry.position;
+
+            // Calculate bounds based on shape type
+            const bounds: ShapeBounds = switch (visual.shape) {
+                .circle => |c| .{
+                    .x = pos.x - c.radius,
+                    .y = pos.y - c.radius,
+                    .w = c.radius * 2,
+                    .h = c.radius * 2,
+                },
+                .rectangle => |r| .{
+                    .x = pos.x,
+                    .y = pos.y,
+                    .w = r.width,
+                    .h = r.height,
+                },
+                .line => |l| .{
+                    .x = @min(pos.x, pos.x + l.end.x),
+                    .y = @min(pos.y, pos.y + l.end.y),
+                    .w = @abs(l.end.x) + l.thickness,
+                    .h = @abs(l.end.y) + l.thickness,
+                },
+                .triangle => |t| .{
+                    .x = @min(pos.x, @min(pos.x + t.p2.x, pos.x + t.p3.x)),
+                    .y = @min(pos.y, @min(pos.y + t.p2.y, pos.y + t.p3.y)),
+                    .w = @max(pos.x, @max(pos.x + t.p2.x, pos.x + t.p3.x)) - @min(pos.x, @min(pos.x + t.p2.x, pos.x + t.p3.x)),
+                    .h = @max(pos.y, @max(pos.y + t.p2.y, pos.y + t.p3.y)) - @min(pos.y, @min(pos.y + t.p2.y, pos.y + t.p3.y)),
+                },
+                .polygon => |p| .{
+                    .x = pos.x - p.radius,
+                    .y = pos.y - p.radius,
+                    .w = p.radius * 2,
+                    .h = p.radius * 2,
+                },
+            };
+
+            return viewport.overlapsRect(bounds.x, bounds.y, bounds.w, bounds.h);
         }
 
         fn isVisible(self: *const Self, item: RenderItem) bool {
