@@ -448,8 +448,8 @@ pub const SdlBackend = struct {
         @memcpy(&prev_key_state, &curr_key_state);
         prev_mouse_state = curr_mouse_state;
 
-        // Reset mouse wheel delta (accumulated during event polling)
-        mouse_wheel_delta = 0;
+        // Note: mouse_wheel_delta is reset in endDrawing() so user code can read
+        // the accumulated value during the frame
 
         // Capture current keyboard state
         const keyboard_state = sdl.getKeyboardState();
@@ -471,6 +471,9 @@ pub const SdlBackend = struct {
         if (renderer) |ren| {
             ren.present();
         }
+        // Reset mouse wheel delta at end of frame so it's available to user code
+        // between beginDrawing() and endDrawing()
+        mouse_wheel_delta = 0;
     }
 
     pub fn clearBackground(col: Color) void {
@@ -563,6 +566,8 @@ pub const SdlBackend = struct {
 
     pub fn isKeyDown(key: backend.KeyboardKey) bool {
         const scancode = mapKeyToScancode(key);
+        // Unknown scancode means the key is not mapped - return false
+        if (scancode == .unknown) return false;
         const idx = @intFromEnum(scancode);
         if (idx >= NUM_SCANCODES) return false;
         return curr_key_state[idx];
@@ -571,6 +576,8 @@ pub const SdlBackend = struct {
     pub fn isKeyPressed(key: backend.KeyboardKey) bool {
         // Key pressed this frame = down now AND was not down last frame
         const scancode = mapKeyToScancode(key);
+        // Unknown scancode means the key is not mapped - return false
+        if (scancode == .unknown) return false;
         const idx = @intFromEnum(scancode);
         if (idx >= NUM_SCANCODES) return false;
         return curr_key_state[idx] and !prev_key_state[idx];
@@ -579,6 +586,8 @@ pub const SdlBackend = struct {
     pub fn isKeyReleased(key: backend.KeyboardKey) bool {
         // Key released this frame = not down now AND was down last frame
         const scancode = mapKeyToScancode(key);
+        // Unknown scancode means the key is not mapped - return false
+        if (scancode == .unknown) return false;
         const idx = @intFromEnum(scancode);
         if (idx >= NUM_SCANCODES) return false;
         return !curr_key_state[idx] and prev_key_state[idx];
