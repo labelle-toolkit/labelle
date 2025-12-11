@@ -94,6 +94,9 @@ pub const FontId = enum(u32) {
 /// 2D position from zig-utils (Vector2 with rich math operations)
 pub const Position = components.Position;
 
+/// Pivot point for sprite positioning and rotation
+pub const Pivot = components.Pivot;
+
 // ============================================
 // Color Type
 // ============================================
@@ -127,6 +130,12 @@ pub const SpriteVisual = struct {
     tint: Color = Color.white,
     z_index: u8 = 128,
     visible: bool = true,
+    /// Pivot point for positioning and rotation (defaults to center)
+    pivot: Pivot = .center,
+    /// Custom pivot X coordinate (0.0-1.0), used when pivot == .custom
+    pivot_x: f32 = 0.5,
+    /// Custom pivot Y coordinate (0.0-1.0), used when pivot == .custom
+    pivot_y: f32 = 0.5,
 };
 
 /// Shape visual data
@@ -771,10 +780,11 @@ pub fn RetainedEngineWith(comptime BackendType: type) type {
                     const scaled_width = @as(f32, @floatFromInt(sprite.width)) * visual.scale;
                     const scaled_height = @as(f32, @floatFromInt(sprite.height)) * visual.scale;
 
-                    // Sprite is centered, so calculate bounds
-                    const half_w = scaled_width / 2.0;
-                    const half_h = scaled_height / 2.0;
-                    return viewport.overlapsRect(pos.x - half_w, pos.y - half_h, scaled_width, scaled_height);
+                    // Calculate bounds based on pivot
+                    const pivot_origin = visual.pivot.getOrigin(scaled_width, scaled_height, visual.pivot_x, visual.pivot_y);
+                    const sprite_x = pos.x - pivot_origin.x;
+                    const sprite_y = pos.y - pivot_origin.y;
+                    return viewport.overlapsRect(sprite_x, sprite_y, scaled_width, scaled_height);
                 }
             }
             return true; // Render if no sprite data found
@@ -879,9 +889,11 @@ pub fn RetainedEngineWith(comptime BackendType: type) type {
                         .height = scaled_height,
                     };
 
+                    // Calculate origin based on pivot
+                    const pivot_origin = visual.pivot.getOrigin(scaled_width, scaled_height, visual.pivot_x, visual.pivot_y);
                     const origin = BackendType.Vector2{
-                        .x = scaled_width / 2.0,
-                        .y = scaled_height / 2.0,
+                        .x = pivot_origin.x,
+                        .y = pivot_origin.y,
                     };
 
                     BackendType.drawTexturePro(
