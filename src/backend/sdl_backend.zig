@@ -1,37 +1,25 @@
-//! SDL2 Backend Implementation (SKETCH - Not yet functional)
+//! SDL2 Backend Implementation
 //!
 //! Implements the backend interface using SDL.zig bindings.
-//! Requires: SDL2, SDL2_image (for PNG/JPG loading), SDL2_gfx (for shapes)
-//!
-//! Dependencies to add to build.zig:
-//!   const sdl_dep = b.dependency("sdl", .{...});
-//!   const sdl_image_dep = b.dependency("sdl_image", .{...});  // Optional but recommended
-//!
 //! Reference: https://github.com/ikskuh/SDL.zig
 
 const std = @import("std");
 const backend = @import("backend.zig");
-
-// TODO: Import actual SDL bindings when dependency is added
-// const sdl = @import("sdl");
+const sdl = @import("sdl2");
 
 /// SDL2 backend implementation
 pub const SdlBackend = struct {
     // =========================================================================
-    // STATE (SDL requires explicit state management unlike raylib)
+    // STATE (SDL requires explicit state management)
     // =========================================================================
 
-    var window: ?*Window = null;
-    var renderer: ?*Renderer = null;
+    var window: ?sdl.Window = null;
+    var renderer: ?sdl.Renderer = null;
     var screen_width: i32 = 800;
     var screen_height: i32 = 600;
     var last_frame_time: u64 = 0;
     var frame_time: f32 = 1.0 / 60.0;
-
-    // Placeholder types until SDL bindings are added
-    const Window = opaque {};
-    const Renderer = opaque {};
-    const SdlTexture = opaque {};
+    var should_quit: bool = false;
 
     // =========================================================================
     // REQUIRED TYPES
@@ -39,7 +27,7 @@ pub const SdlBackend = struct {
 
     /// SDL texture handle with cached dimensions
     pub const Texture = struct {
-        handle: ?*SdlTexture,
+        handle: sdl.Texture,
         width: i32,
         height: i32,
     };
@@ -54,6 +42,11 @@ pub const SdlBackend = struct {
         pub fn eql(self: Color, other: Color) bool {
             return self.r == other.r and self.g == other.g and self.b == other.b and self.a == other.a;
         }
+
+        /// Convert to SDL Color
+        fn toSdl(self: Color) sdl.Color {
+            return sdl.Color{ .r = self.r, .g = self.g, .b = self.b, .a = self.a };
+        }
     };
 
     /// Rectangle with float coordinates
@@ -62,6 +55,26 @@ pub const SdlBackend = struct {
         y: f32,
         width: f32,
         height: f32,
+
+        /// Convert to SDL Rectangle (integer)
+        fn toSdlRect(self: Rectangle) sdl.Rectangle {
+            return sdl.Rectangle{
+                .x = @intFromFloat(self.x),
+                .y = @intFromFloat(self.y),
+                .width = @intFromFloat(self.width),
+                .height = @intFromFloat(self.height),
+            };
+        }
+
+        /// Convert to SDL RectangleF
+        fn toSdlRectF(self: Rectangle) sdl.RectangleF {
+            return sdl.RectangleF{
+                .x = self.x,
+                .y = self.y,
+                .width = self.width,
+                .height = self.height,
+            };
+        }
     };
 
     /// 2D vector
@@ -104,8 +117,8 @@ pub const SdlBackend = struct {
         return .{ .r = r, .g = g, .b = b, .a = a };
     }
 
-    pub fn rectangle(x: f32, y: f32, width: f32, height: f32) Rectangle {
-        return .{ .x = x, .y = y, .width = width, .height = height };
+    pub fn rectangle(x: f32, y: f32, w: f32, h: f32) Rectangle {
+        return .{ .x = x, .y = y, .width = w, .height = h };
     }
 
     pub fn vector2(x: f32, y: f32) Vector2 {
@@ -117,28 +130,45 @@ pub const SdlBackend = struct {
     // =========================================================================
 
     /// Load texture from file path
-    /// Requires SDL2_image for PNG/JPG support (SDL2 core only loads BMP)
+    /// Note: SDL2 core only loads BMP. For PNG/JPG, use loadTextureFromMemory with pre-loaded data.
     pub fn loadTexture(path: [:0]const u8) !Texture {
         _ = path;
-        // TODO: Implement with SDL2_image
-        // const surface = sdl.image.load(path) orelse return error.TextureLoadFailed;
-        // defer sdl.freeSurface(surface);
-        // const tex = sdl.createTextureFromSurface(renderer, surface) orelse return error.TextureLoadFailed;
-        // var w: c_int = 0;
-        // var h: c_int = 0;
-        // _ = sdl.queryTexture(tex, null, null, &w, &h);
-        // return Texture{ .handle = tex, .width = w, .height = h };
+        // SDL2 core cannot load PNG/JPG directly (needs SDL2_image)
+        // Similar to sokol backend, return error for file loading
+        return backend.BackendError.TextureLoadFailed;
+    }
 
-        return error.TextureLoadFailed;
+    /// Load texture from raw pixel data (RGBA format)
+    pub fn loadTextureFromMemory(pixels: []const u8, w: i32, h: i32) !Texture {
+        const ren = renderer orelse return backend.BackendError.TextureLoadFailed;
+
+        // Create surface from pixels
+        const surface = sdl.Surface.createRgbSurfaceFrom(
+            @constCast(pixels.ptr),
+            w,
+            h,
+            32, // bits per pixel
+            w * 4, // pitch
+            0x000000FF, // R mask
+            0x0000FF00, // G mask
+            0x00FF0000, // B mask
+            0xFF000000, // A mask
+        ) catch return backend.BackendError.TextureLoadFailed;
+        defer surface.destroy();
+
+        // Create texture from surface
+        const tex = sdl.createTextureFromSurface(ren, surface) catch return backend.BackendError.TextureLoadFailed;
+
+        return Texture{
+            .handle = tex,
+            .width = w,
+            .height = h,
+        };
     }
 
     /// Unload texture and free resources
     pub fn unloadTexture(texture: Texture) void {
-        _ = texture;
-        // TODO: Implement
-        // if (texture.handle) |tex| {
-        //     sdl.destroyTexture(tex);
-        // }
+        texture.handle.destroy();
     }
 
     // =========================================================================
@@ -146,7 +176,6 @@ pub const SdlBackend = struct {
     // =========================================================================
 
     /// Draw texture with full transform control
-    /// This is the core sprite rendering function
     pub fn drawTexturePro(
         texture: Texture,
         source: Rectangle,
@@ -155,49 +184,34 @@ pub const SdlBackend = struct {
         rotation: f32,
         tint: Color,
     ) void {
-        _ = texture;
-        _ = source;
-        _ = dest;
-        _ = origin;
-        _ = rotation;
-        _ = tint;
+        const ren = renderer orelse return;
 
-        // TODO: Implement with SDL_RenderCopyEx
-        // This requires:
-        // 1. Convert source Rectangle to SDL_Rect
-        // 2. Convert dest Rectangle to SDL_Rect (adjusted for camera)
-        // 3. Apply camera transform to destination
-        // 4. Set texture color mod for tint: SDL_SetTextureColorMod
-        // 5. Set texture alpha mod: SDL_SetTextureAlphaMod
-        // 6. Call SDL_RenderCopyEx with rotation and flip flags
-        //
-        // const src_rect = SDL_Rect{
-        //     .x = @intFromFloat(source.x),
-        //     .y = @intFromFloat(source.y),
-        //     .w = @intFromFloat(source.width),
-        //     .h = @intFromFloat(source.height),
-        // };
-        //
-        // // Apply camera transform
-        // const transformed = applyCameraTransform(dest);
-        //
-        // const dst_rect = SDL_Rect{
-        //     .x = @intFromFloat(transformed.x),
-        //     .y = @intFromFloat(transformed.y),
-        //     .w = @intFromFloat(transformed.width),
-        //     .h = @intFromFloat(transformed.height),
-        // };
-        //
-        // const center = SDL_Point{
-        //     .x = @intFromFloat(origin.x),
-        //     .y = @intFromFloat(origin.y),
-        // };
-        //
-        // // Apply tint
-        // sdl.setTextureColorMod(texture.handle, tint.r, tint.g, tint.b);
-        // sdl.setTextureAlphaMod(texture.handle, tint.a);
-        //
-        // sdl.renderCopyEx(renderer, texture.handle, &src_rect, &dst_rect, rotation, &center, .none);
+        // Apply camera transform if active
+        const transformed = applyCameraTransform(dest);
+
+        // Apply tint via color modulation
+        texture.handle.setColorMod(tint.toSdl()) catch {};
+        texture.handle.setAlphaMod(tint.a) catch {};
+
+        // Setup center point for rotation
+        const center = sdl.PointF{
+            .x = origin.x * (if (current_camera) |cam| cam.zoom else 1.0),
+            .y = origin.y * (if (current_camera) |cam| cam.zoom else 1.0),
+        };
+
+        // Draw with rotation
+        ren.copyExF(
+            texture.handle,
+            transformed.toSdlRectF(),
+            source.toSdlRect(),
+            rotation,
+            center,
+            .none,
+        ) catch {};
+
+        // Reset color mod
+        texture.handle.resetColorMod() catch {};
+        texture.handle.setAlphaMod(255) catch {};
     }
 
     // =========================================================================
@@ -207,7 +221,6 @@ pub const SdlBackend = struct {
     var current_camera: ?Camera2D = null;
 
     /// Begin 2D camera mode
-    /// SDL doesn't have built-in camera - we track it and apply transforms manually
     pub fn beginMode2D(camera: Camera2D) void {
         current_camera = camera;
     }
@@ -220,12 +233,6 @@ pub const SdlBackend = struct {
     /// Apply camera transform to a rectangle (internal helper)
     fn applyCameraTransform(rect: Rectangle) Rectangle {
         const cam = current_camera orelse return rect;
-
-        // Transform: world coords -> screen coords
-        // 1. Translate by -target (center camera on target)
-        // 2. Scale by zoom
-        // 3. Rotate by rotation (TODO: rotation support)
-        // 4. Translate by offset (typically screen center)
 
         const cos_r = @cos(cam.rotation * std.math.pi / 180.0);
         const sin_r = @sin(cam.rotation * std.math.pi / 180.0);
@@ -256,21 +263,17 @@ pub const SdlBackend = struct {
 
     /// Convert screen coordinates to world coordinates
     pub fn screenToWorld(pos: Vector2, camera: Camera2D) Vector2 {
-        // Inverse of camera transform
         var x = pos.x - camera.offset.x;
         var y = pos.y - camera.offset.y;
 
-        // Inverse zoom
         x /= camera.zoom;
         y /= camera.zoom;
 
-        // Inverse rotation
         const cos_r = @cos(-camera.rotation * std.math.pi / 180.0);
         const sin_r = @sin(-camera.rotation * std.math.pi / 180.0);
         const rotated_x = x * cos_r - y * sin_r;
         const rotated_y = x * sin_r + y * cos_r;
 
-        // Translate back
         return Vector2{
             .x = rotated_x + camera.target.x,
             .y = rotated_y + camera.target.y,
@@ -313,22 +316,44 @@ pub const SdlBackend = struct {
     // =========================================================================
 
     pub fn initWindow(width: i32, height: i32, title: [*:0]const u8) void {
-        _ = title;
         screen_width = width;
         screen_height = height;
+        should_quit = false;
 
-        // TODO: Implement
-        // _ = sdl.init(.{ .video = true, .events = true });
-        // window = sdl.createWindow(title, .centered, .centered, width, height, .{});
-        // renderer = sdl.createRenderer(window, -1, .{ .accelerated = true, .present_vsync = true });
-        // last_frame_time = sdl.getPerformanceCounter();
+        // Initialize SDL
+        sdl.init(.{ .video = true, .events = true }) catch {
+            std.debug.print("SDL init failed\n", .{});
+            return;
+        };
+
+        // Create window
+        window = sdl.createWindow(
+            std.mem.span(title),
+            .default,
+            .default,
+            @intCast(width),
+            @intCast(height),
+            .{ .vis = .shown },
+        ) catch {
+            std.debug.print("SDL window creation failed\n", .{});
+            return;
+        };
+
+        // Create renderer
+        if (window) |w| {
+            renderer = sdl.createRenderer(w, null, .{ .accelerated = true, .present_vsync = true }) catch {
+                std.debug.print("SDL renderer creation failed\n", .{});
+                return;
+            };
+        }
+
+        last_frame_time = sdl.getPerformanceCounter();
     }
 
     pub fn closeWindow() void {
-        // TODO: Implement
-        // if (renderer) |r| sdl.destroyRenderer(r);
-        // if (window) |w| sdl.destroyWindow(w);
-        // sdl.quit();
+        if (renderer) |r| r.destroy();
+        if (window) |w| w.destroy();
+        sdl.quit();
         window = null;
         renderer = null;
     }
@@ -338,31 +363,31 @@ pub const SdlBackend = struct {
     }
 
     pub fn windowShouldClose() bool {
-        // TODO: Implement - poll events and check for quit
-        // while (sdl.pollEvent()) |event| {
-        //     if (event.type == .quit) return true;
-        // }
-        return false;
+        // Poll events and check for quit
+        while (sdl.pollEvent()) |event| {
+            switch (event) {
+                .quit => {
+                    should_quit = true;
+                },
+                else => {},
+            }
+        }
+        return should_quit;
     }
 
     pub fn setTargetFPS(fps: i32) void {
         _ = fps;
         // SDL uses vsync by default if enabled in renderer creation
-        // For manual FPS limiting, track frame time and delay
     }
 
     pub fn setConfigFlags(flags: backend.ConfigFlags) void {
         _ = flags;
-        // TODO: Map to SDL window flags
-        // vsync_hint -> SDL_RENDERER_PRESENTVSYNC
-        // fullscreen_mode -> SDL_WINDOW_FULLSCREEN
-        // window_resizable -> SDL_WINDOW_RESIZABLE
-        // etc.
+        // TODO: Map to SDL window flags before window creation
     }
 
     pub fn takeScreenshot(filename: [*:0]const u8) void {
         _ = filename;
-        // TODO: Implement using SDL_RenderReadPixels + IMG_SavePNG
+        // Would need SDL_RenderReadPixels + image saving library
     }
 
     // =========================================================================
@@ -371,22 +396,23 @@ pub const SdlBackend = struct {
 
     pub fn beginDrawing() void {
         // Calculate delta time
-        // const now = sdl.getPerformanceCounter();
-        // const freq = sdl.getPerformanceFrequency();
-        // frame_time = @as(f32, @floatFromInt(now - last_frame_time)) / @as(f32, @floatFromInt(freq));
-        // last_frame_time = now;
+        const now = sdl.getPerformanceCounter();
+        const freq = sdl.getPerformanceFrequency();
+        frame_time = @as(f32, @floatFromInt(now - last_frame_time)) / @as(f32, @floatFromInt(freq));
+        last_frame_time = now;
     }
 
     pub fn endDrawing() void {
-        // TODO: Implement
-        // sdl.renderPresent(renderer);
+        if (renderer) |ren| {
+            ren.present();
+        }
     }
 
     pub fn clearBackground(col: Color) void {
-        _ = col;
-        // TODO: Implement
-        // sdl.setRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
-        // sdl.renderClear(renderer);
+        if (renderer) |ren| {
+            ren.setColor(col.toSdl()) catch {};
+            ren.clear() catch {};
+        }
     }
 
     pub fn getFrameTime() f32 {
@@ -397,74 +423,100 @@ pub const SdlBackend = struct {
     // OPTIONAL: INPUT HANDLING
     // =========================================================================
 
-    // SDL uses scancode-based input, need to map from backend.KeyboardKey
-    fn mapKey(key: backend.KeyboardKey) u32 {
-        // Map labelle key codes to SDL scancodes
-        // This is a subset - extend as needed
+    fn mapKeyToScancode(key: backend.KeyboardKey) sdl.Scancode {
         return switch (key) {
-            .space => 44, // SDL_SCANCODE_SPACE
-            .escape => 41, // SDL_SCANCODE_ESCAPE
-            .enter => 40, // SDL_SCANCODE_RETURN
-            .up => 82, // SDL_SCANCODE_UP
-            .down => 81, // SDL_SCANCODE_DOWN
-            .left => 80, // SDL_SCANCODE_LEFT
-            .right => 79, // SDL_SCANCODE_RIGHT
-            .a => 4,
-            .b => 5,
-            .c => 6,
-            .d => 7,
-            .e => 8,
-            .f => 9,
-            .g => 10,
-            .h => 11,
-            .i => 12,
-            .j => 13,
-            .k => 14,
-            .l => 15,
-            .m => 16,
-            .n => 17,
-            .o => 18,
-            .p => 19,
-            .q => 20,
-            .r => 21,
-            .s => 22,
-            .t => 23,
-            .u => 24,
-            .v => 25,
-            .w => 26,
-            .x => 27,
-            .y => 28,
-            .z => 29,
-            else => 0,
+            .space => .space,
+            .escape => .escape,
+            .enter => .@"return",
+            .tab => .tab,
+            .backspace => .backspace,
+            .up => .up,
+            .down => .down,
+            .left => .left,
+            .right => .right,
+            .a => .a,
+            .b => .b,
+            .c => .c,
+            .d => .d,
+            .e => .e,
+            .f => .f,
+            .g => .g,
+            .h => .h,
+            .i => .i,
+            .j => .j,
+            .k => .k,
+            .l => .l,
+            .m => .m,
+            .n => .n,
+            .o => .o,
+            .p => .p,
+            .q => .q,
+            .r => .r,
+            .s => .s,
+            .t => .t,
+            .u => .u,
+            .v => .v,
+            .w => .w,
+            .x => .x,
+            .y => .y,
+            .z => .z,
+            .zero => .@"0",
+            .one => .@"1",
+            .two => .@"2",
+            .three => .@"3",
+            .four => .@"4",
+            .five => .@"5",
+            .six => .@"6",
+            .seven => .@"7",
+            .eight => .@"8",
+            .nine => .@"9",
+            .f1 => .f1,
+            .f2 => .f2,
+            .f3 => .f3,
+            .f4 => .f4,
+            .f5 => .f5,
+            .f6 => .f6,
+            .f7 => .f7,
+            .f8 => .f8,
+            .f9 => .f9,
+            .f10 => .f10,
+            .f11 => .f11,
+            .f12 => .f12,
+            .left_shift => .left_shift,
+            .left_control => .left_control,
+            .left_alt => .left_alt,
+            .right_shift => .right_shift,
+            .right_control => .right_control,
+            .right_alt => .right_alt,
+            else => .unknown,
         };
     }
 
     pub fn isKeyDown(key: backend.KeyboardKey) bool {
-        _ = mapKey(key);
-        // TODO: Implement
-        // const state = sdl.getKeyboardState();
-        // return state[mapKey(key)] != 0;
-        return false;
+        const keyboard_state = sdl.getKeyboardState();
+        return keyboard_state.isPressed(mapKeyToScancode(key));
     }
 
     pub fn isKeyPressed(key: backend.KeyboardKey) bool {
         _ = key;
-        // SDL doesn't have built-in "pressed this frame" - need to track state
+        // SDL doesn't have built-in "pressed this frame" - would need state tracking
         return false;
     }
 
     pub fn isKeyReleased(key: backend.KeyboardKey) bool {
         _ = key;
-        // SDL doesn't have built-in "released this frame" - need to track state
+        // SDL doesn't have built-in "released this frame" - would need state tracking
         return false;
     }
 
     pub fn isMouseButtonDown(button: backend.MouseButton) bool {
-        _ = button;
-        // TODO: Implement
-        // const state = sdl.getMouseState(null, null);
-        // return (state & sdl.button(button)) != 0;
-        return false;
+        const state = sdl.getMouseState();
+        return switch (button) {
+            .left => state.left,
+            .right => state.right,
+            .middle => state.middle,
+            else => false,
+        };
     }
 
     pub fn isMouseButtonPressed(button: backend.MouseButton) bool {
@@ -473,23 +525,20 @@ pub const SdlBackend = struct {
     }
 
     pub fn getMousePosition() Vector2 {
-        // TODO: Implement
-        // var x: c_int = 0;
-        // var y: c_int = 0;
-        // _ = sdl.getMouseState(&x, &y);
-        // return Vector2{ .x = @floatFromInt(x), .y = @floatFromInt(y) };
-        return Vector2{ .x = 0, .y = 0 };
+        const state = sdl.getMouseState();
+        return Vector2{
+            .x = @floatFromInt(state.x),
+            .y = @floatFromInt(state.y),
+        };
     }
 
     pub fn getMouseWheelMove() f32 {
-        // SDL wheel is event-based, need to track in event loop
+        // SDL wheel is event-based, would need to track in event loop
         return 0;
     }
 
     // =========================================================================
     // OPTIONAL: SHAPE DRAWING
-    // Note: SDL2 core only has rectangles and lines
-    // Circles, triangles, polygons require SDL2_gfx or manual implementation
     // =========================================================================
 
     pub fn drawText(text: [*:0]const u8, x: i32, y: i32, font_size: i32, col: Color) void {
@@ -498,35 +547,19 @@ pub const SdlBackend = struct {
         _ = y;
         _ = font_size;
         _ = col;
-        // SDL2 has no built-in text rendering!
-        // Options:
-        // 1. SDL2_ttf for TrueType fonts
-        // 2. Bitmap font atlas (recommended for games)
-        // 3. Render text to texture at startup
+        // SDL2 has no built-in text rendering - needs SDL2_ttf
     }
 
-    pub fn drawRectangle(x: i32, y: i32, width: i32, height: i32, col: Color) void {
-        _ = x;
-        _ = y;
-        _ = width;
-        _ = height;
-        _ = col;
-        // TODO: Implement
-        // const rect = SDL_Rect{ .x = x, .y = y, .w = width, .h = height };
-        // sdl.setRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
-        // sdl.renderFillRect(renderer, &rect);
+    pub fn drawRectangle(x: i32, y: i32, w: i32, h: i32, col: Color) void {
+        const ren = renderer orelse return;
+        ren.setColor(col.toSdl()) catch {};
+        ren.fillRect(sdl.Rectangle{ .x = x, .y = y, .width = w, .height = h }) catch {};
     }
 
-    pub fn drawRectangleLines(x: i32, y: i32, width: i32, height: i32, col: Color) void {
-        _ = x;
-        _ = y;
-        _ = width;
-        _ = height;
-        _ = col;
-        // TODO: Implement
-        // const rect = SDL_Rect{ .x = x, .y = y, .w = width, .h = height };
-        // sdl.setRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
-        // sdl.renderDrawRect(renderer, &rect);
+    pub fn drawRectangleLines(x: i32, y: i32, w: i32, h: i32, col: Color) void {
+        const ren = renderer orelse return;
+        ren.setColor(col.toSdl()) catch {};
+        ren.drawRect(sdl.Rectangle{ .x = x, .y = y, .width = w, .height = h }) catch {};
     }
 
     pub fn drawRectangleRec(rec: Rectangle, col: Color) void {
@@ -539,86 +572,150 @@ pub const SdlBackend = struct {
         );
     }
 
-    pub fn drawRectangleV(x: f32, y: f32, width: f32, height: f32, col: Color) void {
-        drawRectangle(@intFromFloat(x), @intFromFloat(y), @intFromFloat(width), @intFromFloat(height), col);
+    pub fn drawRectangleV(x: f32, y: f32, w: f32, h: f32, col: Color) void {
+        drawRectangle(@intFromFloat(x), @intFromFloat(y), @intFromFloat(w), @intFromFloat(h), col);
     }
 
-    pub fn drawRectangleLinesV(x: f32, y: f32, width: f32, height: f32, col: Color) void {
-        drawRectangleLines(@intFromFloat(x), @intFromFloat(y), @intFromFloat(width), @intFromFloat(height), col);
+    pub fn drawRectangleLinesV(x: f32, y: f32, w: f32, h: f32, col: Color) void {
+        drawRectangleLines(@intFromFloat(x), @intFromFloat(y), @intFromFloat(w), @intFromFloat(h), col);
     }
 
     pub fn drawLine(start_x: f32, start_y: f32, end_x: f32, end_y: f32, col: Color) void {
-        _ = start_x;
-        _ = start_y;
-        _ = end_x;
-        _ = end_y;
-        _ = col;
-        // TODO: Implement
-        // sdl.setRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
-        // sdl.renderDrawLine(renderer, @intFromFloat(start_x), @intFromFloat(start_y),
-        //                    @intFromFloat(end_x), @intFromFloat(end_y));
+        const ren = renderer orelse return;
+        ren.setColor(col.toSdl()) catch {};
+        ren.drawLineF(start_x, start_y, end_x, end_y) catch {};
     }
 
     pub fn drawLineEx(start_x: f32, start_y: f32, end_x: f32, end_y: f32, thickness: f32, col: Color) void {
         _ = thickness;
         // SDL2 core doesn't support thick lines
-        // Would need SDL2_gfx thickLineRGBA or manual quad rendering
         drawLine(start_x, start_y, end_x, end_y, col);
     }
 
     pub fn drawCircle(center_x: f32, center_y: f32, radius: f32, col: Color) void {
-        _ = center_x;
-        _ = center_y;
-        _ = radius;
-        _ = col;
-        // SDL2 core has NO circle drawing!
-        // Options:
-        // 1. SDL2_gfx: filledCircleRGBA()
-        // 2. Manual midpoint circle algorithm
-        // 3. Pre-rendered circle texture
+        const ren = renderer orelse return;
+        ren.setColor(col.toSdl()) catch {};
+
+        // Midpoint circle algorithm for filled circle
+        const cx: i32 = @intFromFloat(center_x);
+        const cy: i32 = @intFromFloat(center_y);
+        const r: i32 = @intFromFloat(radius);
+
+        var x: i32 = r;
+        var y: i32 = 0;
+        var err: i32 = 0;
+
+        while (x >= y) {
+            // Draw horizontal lines for filled circle
+            ren.drawLine(cx - x, cy + y, cx + x, cy + y) catch {};
+            ren.drawLine(cx - x, cy - y, cx + x, cy - y) catch {};
+            ren.drawLine(cx - y, cy + x, cx + y, cy + x) catch {};
+            ren.drawLine(cx - y, cy - x, cx + y, cy - x) catch {};
+
+            y += 1;
+            err += 1 + 2 * y;
+            if (2 * (err - x) + 1 > 0) {
+                x -= 1;
+                err += 1 - 2 * x;
+            }
+        }
     }
 
     pub fn drawCircleLines(center_x: f32, center_y: f32, radius: f32, col: Color) void {
-        _ = center_x;
-        _ = center_y;
-        _ = radius;
-        _ = col;
-        // SDL2 core has NO circle drawing!
-        // Use SDL2_gfx: circleRGBA() or manual implementation
+        const ren = renderer orelse return;
+        ren.setColor(col.toSdl()) catch {};
+
+        // Midpoint circle algorithm
+        const cx: i32 = @intFromFloat(center_x);
+        const cy: i32 = @intFromFloat(center_y);
+        const r: i32 = @intFromFloat(radius);
+
+        var x: i32 = r;
+        var y: i32 = 0;
+        var err: i32 = 0;
+
+        while (x >= y) {
+            ren.drawPoint(cx + x, cy + y) catch {};
+            ren.drawPoint(cx + y, cy + x) catch {};
+            ren.drawPoint(cx - y, cy + x) catch {};
+            ren.drawPoint(cx - x, cy + y) catch {};
+            ren.drawPoint(cx - x, cy - y) catch {};
+            ren.drawPoint(cx - y, cy - x) catch {};
+            ren.drawPoint(cx + y, cy - x) catch {};
+            ren.drawPoint(cx + x, cy - y) catch {};
+
+            y += 1;
+            err += 1 + 2 * y;
+            if (2 * (err - x) + 1 > 0) {
+                x -= 1;
+                err += 1 - 2 * x;
+            }
+        }
     }
 
     pub fn drawTriangle(x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32, col: Color) void {
-        _ = x1;
-        _ = y1;
-        _ = x2;
-        _ = y2;
-        _ = x3;
-        _ = y3;
-        _ = col;
-        // SDL2 core has NO triangle drawing!
-        // Use SDL2_gfx: filledTrigonRGBA() or SDL_RenderGeometry (SDL 2.0.18+)
+        const ren = renderer orelse return;
+
+        // Use SDL_RenderGeometry for filled triangle
+        const vertices = [_]sdl.Vertex{
+            .{ .position = .{ .x = x1, .y = y1 }, .color = col.toSdl() },
+            .{ .position = .{ .x = x2, .y = y2 }, .color = col.toSdl() },
+            .{ .position = .{ .x = x3, .y = y3 }, .color = col.toSdl() },
+        };
+
+        ren.drawGeometry(null, &vertices, null) catch {};
     }
 
     pub fn drawTriangleLines(x1: f32, y1: f32, x2: f32, y2: f32, x3: f32, y3: f32, col: Color) void {
-        // Draw 3 lines
         drawLine(x1, y1, x2, y2, col);
         drawLine(x2, y2, x3, y3, col);
         drawLine(x3, y3, x1, y1, col);
     }
 
     pub fn drawPoly(center_x: f32, center_y: f32, sides: i32, radius: f32, rotation: f32, col: Color) void {
-        _ = center_x;
-        _ = center_y;
-        _ = sides;
-        _ = radius;
-        _ = rotation;
-        _ = col;
-        // SDL2 core has NO polygon drawing!
-        // Use SDL2_gfx: filledPolygonRGBA() or manual triangle fan
+        if (sides < 3) return;
+        const ren = renderer orelse return;
+
+        // Build triangle fan vertices
+        const sides_usize: usize = @intCast(sides);
+        var vertices: [32]sdl.Vertex = undefined; // Max 32 sides
+        const actual_sides = @min(sides_usize, 31);
+
+        const angle_step = 2.0 * std.math.pi / @as(f32, @floatFromInt(actual_sides));
+        const rot_rad = rotation * std.math.pi / 180.0;
+
+        // Center vertex
+        vertices[0] = .{
+            .position = .{ .x = center_x, .y = center_y },
+            .color = col.toSdl(),
+        };
+
+        // Outer vertices
+        for (0..actual_sides) |i| {
+            const angle = @as(f32, @floatFromInt(i)) * angle_step + rot_rad;
+            vertices[i + 1] = .{
+                .position = .{
+                    .x = center_x + @cos(angle) * radius,
+                    .y = center_y + @sin(angle) * radius,
+                },
+                .color = col.toSdl(),
+            };
+        }
+
+        // Build indices for triangle fan
+        var indices: [96]u32 = undefined; // Max 32 triangles * 3 indices
+        var idx: usize = 0;
+        for (0..actual_sides) |i| {
+            indices[idx] = 0; // Center
+            indices[idx + 1] = @intCast(i + 1);
+            indices[idx + 2] = @intCast(if (i + 2 > actual_sides) 1 else i + 2);
+            idx += 3;
+        }
+
+        ren.drawGeometry(null, vertices[0 .. actual_sides + 1], indices[0..idx]) catch {};
     }
 
     pub fn drawPolyLines(center_x: f32, center_y: f32, sides: i32, radius: f32, rotation: f32, col: Color) void {
-        // Manual implementation using lines
         const sides_f: f32 = @floatFromInt(sides);
         const angle_step = 2.0 * std.math.pi / sides_f;
         const rot_rad = rotation * std.math.pi / 180.0;
@@ -642,6 +739,7 @@ pub const SdlBackend = struct {
     // =========================================================================
 
     pub fn isTextureValid(texture: Texture) bool {
-        return texture.handle != null;
+        _ = texture;
+        return true; // SDL textures are always valid if they exist
     }
 };
