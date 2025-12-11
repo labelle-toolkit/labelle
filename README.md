@@ -26,7 +26,8 @@ A 2D graphics library for Zig games using [raylib](https://www.raylib.com/) for 
 - **Input/UI Helpers** - Static helpers for keyboard input and UI text rendering
 - **Visual Effects** - Fade, temporal fade, flash effects
 - **Z-Index Bucket Optimization** - O(n) rendering via pre-sorted buckets (no per-frame sorting)
-- **Backend Abstraction** - Support for raylib (default) and sokol backends
+- **Multi-Camera Support** - Split-screen, minimap, and picture-in-picture rendering
+- **Backend Abstraction** - Support for raylib (default), sokol, and SDL2 backends
 - **Scoped Logging** - Configurable logging following labelle-toolkit pattern
 - **Single Sprite Loading** - Load individual images without atlas (SingleSprite API)
 - **Tiled Map Editor Support** - Load and render TMX tilemaps with external tilesets
@@ -198,6 +199,12 @@ zig build run-example-15
 
 # Retained engine (EntityId-based)
 zig build run-example-16
+
+# SDL2 backend
+zig build run-example-17
+
+# Multi-camera (split-screen)
+zig build run-example-18
 ```
 
 ## API Overview
@@ -267,6 +274,33 @@ _ = engine.setShapeColor(circle, .{ .r = 255, .g = 0, .b = 0, .a = 255 });
 _ = engine.setShapeFilled(rect, false);  // Outline only
 ```
 
+### Multi-Camera
+
+```zig
+const gfx = @import("labelle");
+
+var engine = try gfx.RetainedEngine.init(allocator, .{
+    .window = .{ .width = 800, .height = 600, .title = "Split Screen" },
+});
+defer engine.deinit();
+
+// Setup split-screen layout (vertical, horizontal, or quadrant)
+engine.setupSplitScreen(.vertical_split);
+
+// Each camera can be positioned independently
+engine.getCameraAt(0).setPosition(player1_x, player1_y);
+engine.getCameraAt(1).setPosition(player2_x, player2_y);
+
+// Game loop - render() automatically handles multi-camera
+while (engine.isRunning()) {
+    engine.beginFrame();
+    engine.render();
+    engine.endFrame();
+}
+```
+
+Available layouts: `.single` (default), `.vertical_split`, `.horizontal_split`, `.quadrant`
+
 ### Logging
 
 ```zig
@@ -295,7 +329,7 @@ labelle/
 │   ├── backend/                # Backend abstraction
 │   └── tools/                  # CLI tools (converter)
 ├── tests/                      # Test files (zspec)
-├── examples/                   # Example applications (01-16)
+├── examples/                   # Example applications (01-18)
 └── fixtures/                   # Test assets
 ```
 
@@ -322,6 +356,7 @@ zig build -Dconvert-atlases=true
 
 - [raylib-zig](https://github.com/raysan5/raylib) - Graphics and windowing
 - [sokol](https://github.com/floooh/sokol) - Optional alternative backend
+- [SDL.zig](https://github.com/ikskuh/SDL.zig) - Optional SDL2 backend
 - [zig-utils](https://github.com/labelle-toolkit/zig-utils) - Common utilities
 - [zspec](https://github.com/labelle-toolkit/zspec) - BDD-style testing
 
